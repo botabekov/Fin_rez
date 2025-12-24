@@ -2785,15 +2785,63 @@
         });
 
         exportBtn.addEventListener('click', () => {
-          if (!lastData || lastData.length <= 1) {
-            alert('Нет данных для выгрузки.');
-            return;
-          }
-          const wb = XLSX.utils.book_new();
-          const ws = XLSX.utils.aoa_to_sheet(lastData);
-          XLSX.utils.book_append_sheet(wb, ws, 'Данные');
-          XLSX.writeFile(wb, 'result.xlsx');
-        });
+  const hasFi = lastData && lastData.length > 1;
+  const hasDiv = dividendsDataFull && dividendsDataFull.length > 1;
+  const hasRepo = repoDataFull && repoDataFull.length > 1;
+  const hasCb = cbData && cbData.length > 1;
+
+  if (!hasFi && !hasDiv && !hasRepo && !hasCb) {
+    alert('Нет данных для выгрузки.');
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  // 1) Движение
+  if (hasFi) {
+    const wsFi = XLSX.utils.aoa_to_sheet(lastData);
+    XLSX.utils.book_append_sheet(wb, wsFi, 'Движение');
+  }
+
+  // 2) Дивиденды
+  if (hasDiv) {
+    const wsDiv = XLSX.utils.aoa_to_sheet(dividendsDataFull);
+    XLSX.utils.book_append_sheet(wb, wsDiv, 'Дивиденды');
+  }
+
+  // 3) РЕПО
+  if (hasRepo) {
+    const wsRepo = XLSX.utils.aoa_to_sheet(repoDataFull);
+    XLSX.utils.book_append_sheet(wb, wsRepo, 'РЕПО');
+  }
+
+  // 4) Остатки ЦБ
+  if (hasCb) {
+    let aoaCb = cbData;
+    if (cbAsOfDate) {
+      const cols = (cbData[0] || []).length || 1;
+      const infoRow = new Array(cols).fill('');
+      infoRow[0] = 'По состоянию на: ' + cbAsOfDate;
+      aoaCb = [infoRow, ...cbData];
+    }
+    const wsCb = XLSX.utils.aoa_to_sheet(aoaCb);
+    XLSX.utils.book_append_sheet(wb, wsCb, 'Остатки ЦБ');
+  }
+
+  // Имя файла покрасивее
+  const fio = (metaFio && metaFio.value) ? metaFio.value.trim() : '';
+  const acc = (metaAccount && metaAccount.value) ? metaAccount.value.trim() : '';
+  const asOf = (metaAsOf && metaAsOf.value) ? metaAsOf.value.trim() : '';
+  const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g, '').trim();
+
+  const fileNameParts = ['Финрез'];
+  if (fio) fileNameParts.push(safe(fio));
+  if (acc) fileNameParts.push(safe(acc));
+  if (asOf) fileNameParts.push(safe(asOf));
+
+  XLSX.writeFile(wb, fileNameParts.join(' - ') + '.xlsx');
+});
+
 
         // ===== Year report =====
         function escapeHtml(val) {
