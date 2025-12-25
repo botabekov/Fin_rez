@@ -549,13 +549,114 @@
     .modal-field input:focus { border-color: var(--primary); ring: 2px solid var(--primary-light); }
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
-    @media (max-width: 1100px) {
-      .meta-grid { grid-template-columns: 1fr; }
-      .nav-panel { width: 50px; }
-      .nav-title, .nav-stat span:last-child { display: none; }
-      .nav-header { justify-content: center; }
-      .nav-stats { flex-direction: column; align-items: center; padding: 6px 0; }
-    }
+   /* Оверлей под выезжающее меню */
+.nav-overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: none;
+  z-index: 55;
+}
+
+/* Кнопка "Инструменты" на десктопе скрыта */
+#nav-toggle-btn{ display: none; }
+
+@media (max-width: 1100px) {
+  .meta-grid { grid-template-columns: 1fr; }
+}
+
+/* Мобилка */
+@media (max-width: 820px) {
+  body { font-size: 14px; }
+
+  .toolbar{
+    position: sticky;
+    top: 0;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .toolbar-group{
+    width: 100%;
+    border-right: none;
+    padding-right: 0;
+    flex-wrap: wrap;
+  }
+  .toolbar-group:last-child{ margin-left: 0; }
+
+  .btn{
+    min-height: 40px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .file-wrapper{
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .toolbar-filter{
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .toolbar-filter select,
+  .toolbar-filter input[type="date"]{
+    min-height: 40px;
+    font-size: 13px;
+  }
+
+  /* На мобилке показываем кнопку открытия меню */
+  #nav-toggle-btn{ display: inline-flex; }
+
+  /* Tabs: горизонтальный скролл */
+  .tabs{
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab-btn{
+    white-space: nowrap;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  /* Меню инструментов превращаем в выезжающую панель */
+  .fi-layout{ position: relative; }
+
+  .nav-panel{
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(82vw, 340px);
+    transform: translateX(-110%);
+    transition: transform 0.2s ease;
+    z-index: 60;
+    box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  }
+  .nav-panel.open{
+    transform: translateX(0);
+  }
+
+  .nav-overlay.open{ display: block; }
+
+  .table-viewport{
+    padding: 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .data-table{ font-size: 12px; }
+  .data-table th{ font-size: 10px; }
+  .data-table th, .data-table td{
+    padding: 6px 6px;
+  }
+
+  .table-wrapper{
+    scroll-margin-top: 140px;
+  }
+}
+
   </style>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -593,6 +694,10 @@
           <input type="date" id="date-to" title="Дата по" disabled />
         </div>
       </div>
+      
+      <button class="btn" id="nav-toggle-btn" type="button" title="Список инструментов">
+        ☰ Инструменты
+      </button>
 
       <button class="btn" id="year-report-btn" type="button" disabled title="Сформировать печатную форму">
         Отчёт по фин. рез
@@ -638,6 +743,8 @@
 
     <div id="tab-fi" class="tab-content tab-content-active" data-tab="fi">
       <div class="fi-layout">
+        <div class="nav-overlay" id="nav-overlay"></div>
+
         <div id="nav-panel" class="nav-panel">
           <div class="nav-stats" id="nav-stats">
             <div class="nav-stat" title="Требуют проверки">
@@ -758,6 +865,33 @@
         const tablesWrapper  = document.getElementById('tables-wrapper');
         const navList        = document.getElementById('nav-list');
         const navCount       = document.getElementById('nav-count');
+        const navPanel       = document.getElementById('nav-panel');
+const navToggleBtn   = document.getElementById('nav-toggle-btn');
+const navOverlay     = document.getElementById('nav-overlay');
+
+const isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+
+function openNav(){
+  if (!navPanel || !navOverlay) return;
+  navPanel.classList.add('open');
+  navOverlay.classList.add('open');
+}
+function closeNav(){
+  if (!navPanel || !navOverlay) return;
+  navPanel.classList.remove('open');
+  navOverlay.classList.remove('open');
+}
+
+if (navToggleBtn) navToggleBtn.addEventListener('click', () => {
+  if (!navPanel) return;
+  navPanel.classList.contains('open') ? closeNav() : openNav();
+});
+if (navOverlay) navOverlay.addEventListener('click', closeNav);
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeNav();
+});
+
         
         // Фильтры
         const yearFilter     = document.getElementById('year-filter');
@@ -2308,6 +2442,10 @@
               table.appendChild(tbody);
 
               table.addEventListener('dblclick', onTableDblClick);
+              if (typeof isTouch !== 'undefined' && isTouch) {
+  attachLongPressEdit(table);
+}
+
               table.addEventListener('blur', onTableBlur, true);
 
               wrapper.appendChild(table);
@@ -2613,6 +2751,10 @@
                  document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
                  item.classList.add('active');
              }
+            if (typeof isTouch !== 'undefined' && isTouch) {
+  closeNav();
+}
+
           });
 
           if (hasYellow) navYellowCount++;
@@ -2693,22 +2835,58 @@
             );
           }
         }
+function isEditableTd(td){
+  return td &&
+    (td.classList.contains('cell-edit-red') ||
+     td.classList.contains('cell-edit-yellow') ||
+     td.classList.contains('cell-edited-red') ||
+     td.classList.contains('cell-edited-yellow') ||
+     td.classList.contains('cell-edit-name') ||
+     td.classList.contains('cell-edit-transfer'));
+}
 
-        function onTableDblClick(event) {
-          const td = event.target.closest('td');
-          if (!td) return;
-          
-          const editable =
-            td.classList.contains('cell-edit-red') ||
-            td.classList.contains('cell-edit-yellow') ||
-            td.classList.contains('cell-edited-red') ||
-            td.classList.contains('cell-edited-yellow') ||
-            td.classList.contains('cell-edit-name') ||
-            td.classList.contains('cell-edit-transfer'); // NEW
+function attachLongPressEdit(table){
+  if (!table) return;
 
-          if (!editable) return;
-          startEditing(td);
-        }
+  let timer = null;
+  let startTd = null;
+  let moved = false;
+
+  const clear = () => {
+    if (timer) { clearTimeout(timer); timer = null; }
+    startTd = null;
+    moved = false;
+  };
+
+  table.addEventListener('touchstart', (e) => {
+    if (!isTouch) return;
+    const td = e.target.closest('td');
+    if (!isEditableTd(td)) return;
+
+    moved = false;
+    startTd = td;
+
+    timer = setTimeout(() => {
+      if (!moved && startTd) startEditing(startTd);
+      clear();
+    }, 450);
+  }, { passive: true });
+
+  table.addEventListener('touchmove', () => {
+    moved = true;
+    clear();
+  }, { passive: true });
+
+  table.addEventListener('touchend', clear, { passive: true });
+  table.addEventListener('touchcancel', clear, { passive: true });
+}
+
+       function onTableDblClick(event) {
+  const td = event.target.closest('td');
+  if (!isEditableTd(td)) return;
+  startEditing(td);
+}
+
 
         function onTableBlur(event) {
           const td = event.target;
