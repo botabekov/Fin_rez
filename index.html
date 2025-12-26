@@ -449,6 +449,14 @@
     
     .cell-edit-red { background: #fef2f2; border: 1px dashed var(--danger); cursor: text; }
     .cell-edit-yellow { background: #fefce8; border: 1px dashed var(--warning); cursor: text; }
+
+    .cell-readonly {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #64748b;
+      cursor: not-allowed;
+    }
+
     
     .cell-edited-red { background: #eff6ff; color: var(--primary); font-weight: 600; }
     .cell-edited-yellow { background: #eff6ff; color: var(--primary); font-weight: 600; }
@@ -2534,9 +2542,11 @@ window.addEventListener('keydown', (e) => {
 
               // !! Logic for new column editing (now visible)
               if (colIndex === colProfitKztIndex) {
-                 td.classList.add('cell-edit-yellow');
-                 td.title = 'Двойной клик для ручного ввода суммы в тенге';
-              }
+          // Эквивалент в тенге рассчитывается автоматически по курсу на дату операции (после интеграции с API).
+          // Ручной ввод отключён.
+          td.classList.add('cell-readonly');
+          td.title = 'Эквивалент в тенге рассчитывается автоматически по курсу на дату операции (будет доступно после интеграции с API курса валют).';
+        }
 
               // !!! Редактируемые поля ПЕРЕВОДА !!!
               if ((colTransferFromIndex != null && colIndex === colTransferFromIndex) || 
@@ -2836,13 +2846,25 @@ window.addEventListener('keydown', (e) => {
           }
         }
 function isEditableTd(td){
-  return td &&
-    (td.classList.contains('cell-edit-red') ||
-     td.classList.contains('cell-edit-yellow') ||
-     td.classList.contains('cell-edited-red') ||
-     td.classList.contains('cell-edited-yellow') ||
-     td.classList.contains('cell-edit-name') ||
-     td.classList.contains('cell-edit-transfer'));
+  if (!td) return false;
+
+  // Ручной ввод для колонок "эквивалент в тенге" отключён:
+  // эквивалент будет рассчитываться автоматически по курсу валют на дату операции (после интеграции с API).
+  const table = td.closest('table');
+  if (table){
+    const col = td.cellIndex;
+    const header = table.querySelectorAll('thead th')[col];
+    if (header && /эквивалент\s+в\s+тенге/i.test((header.textContent || '').trim())) return false;
+  }
+
+  return (
+    td.classList.contains('cell-edit-red') ||
+    td.classList.contains('cell-edit-yellow') ||
+    td.classList.contains('cell-edited-red') ||
+    td.classList.contains('cell-edited-yellow') ||
+    td.classList.contains('cell-edit-name') ||
+    td.classList.contains('cell-edit-transfer')
+  );
 }
 
 function attachLongPressEdit(table){
