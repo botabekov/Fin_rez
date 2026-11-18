@@ -306,6 +306,18 @@
       height: 100%;
     }
 
+    #tab-portfolio {
+      min-height: 0;
+      flex-direction: column;
+      overflow: auto;
+      padding: 12px;
+    }
+
+    #portfolio-table-wrapper {
+      flex: none;
+      overflow-x: auto;
+    }
+
     #tab-fi > .fi-layout { flex: 1; min-height: 0; }
 
     .nav-panel {
@@ -751,7 +763,7 @@
       <button class="tab-btn" id="tab-btn-cb" data-tab="cb" disabled>Остатки ЦБ</button>
     </div>
 
-    <div id="tab-portfolio" class="tab-content tab-content-active" data-tab="portfolio" style="overflow:auto; padding:12px; flex-direction:column">
+    <div id="tab-portfolio" class="tab-content tab-content-active" data-tab="portfolio">
       <p id="portfolio-status" role="status">Загрузите Excel и нажмите «Рассчитать», чтобы увидеть открытые позиции.</p>
       <div class="table-wrapper" id="portfolio-table-wrapper" hidden>
         <table class="data-table">
