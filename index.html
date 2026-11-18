@@ -728,7 +728,7 @@
 
     <div class="toolbar-group">
       <button class="btn btn-primary" id="process-btn" type="button" disabled>Рассчитать</button>
-      <button class="btn btn-danger" id="reset-btn" type="button" disabled>Сброс</button>
+      <button title="Очистить загруженные и сохранённые данные" class="btn btn-danger" id="reset-btn" type="button" disabled>Сброс</button>
       <button class="btn btn-success" id="export-btn" type="button" disabled>Экспорт</button>
     </div>
 
@@ -979,6 +979,7 @@ window.addEventListener('keydown', (e) => {
             });
             metaFio.addEventListener('blur', function() {
                 this.setAttribute('readonly', true);
+                saveLoadedReport();
             });
             metaFio.addEventListener('keydown', function(e) {
                 if(e.key === 'Enter') {
@@ -1104,6 +1105,131 @@ window.addEventListener('keydown', (e) => {
           if (hsBtn)     hsBtn.classList.toggle('btn-selected', isHs);
           
           updateButtonsState();
+        }
+
+        const reportStorageKey = 'fin-rez:loaded-report:v1';
+        let reportGeneration = 0;
+
+        function saveLoadedReport() {
+          if (!fullData) return;
+          try {
+            localStorage.setItem(reportStorageKey, JSON.stringify({
+              colPriceIndex,
+              colCoeffIndex,
+              colIsinIndex,
+              colQtyIndex,
+              colCostIndex,
+              colSaleAmountIndex,
+              colProfitIndex,
+              colBalanceQtyIndex,
+              colBalanceCostIndex,
+              colAvgCostIndex,
+              colDateIndex,
+              colMarketIndex,
+              colProfitKztIndex,
+              colTransferFromIndex,
+              colTransferToIndex,
+              colNameIndex,
+              colTypeIndex,
+              colCurrencyIndex,
+              colDirectionIndex,
+              colCountryIndex,
+              fullData,
+              dividendsDataFull,
+              repoDataFull,
+              cbData,
+              cbAsOfDate,
+              filename: fileLabel.textContent,
+              meta: { fio: metaFio.value, account: metaAccount.value, asOf: metaAsOf.value },
+              editedCells: [...editedCells]
+            }));
+          } catch (error) {
+            console.error(error);
+            showWarning('Браузер не смог сохранить данные для восстановления после обновления страницы.');
+          }
+        }
+
+        function restoreLoadedReport() {
+          try {
+            const saved = JSON.parse(localStorage.getItem(reportStorageKey));
+            if (!saved || !Array.isArray(saved.fullData) || !Array.isArray(saved.fullData[0])) return;
+            ({
+              colPriceIndex,
+              colCoeffIndex,
+              colIsinIndex,
+              colQtyIndex,
+              colCostIndex,
+              colSaleAmountIndex,
+              colProfitIndex,
+              colBalanceQtyIndex,
+              colBalanceCostIndex,
+              colAvgCostIndex,
+              colDateIndex,
+              colMarketIndex,
+              colProfitKztIndex,
+              colTransferFromIndex,
+              colTransferToIndex,
+              colNameIndex,
+              colTypeIndex,
+              colCurrencyIndex,
+              colDirectionIndex,
+              colCountryIndex,
+              fullData,
+              dividendsDataFull,
+              repoDataFull,
+              cbData,
+              cbAsOfDate
+            } = saved);
+            editedCells = new Map(saved.editedCells);
+            fileLabel.textContent = saved.filename;
+            setMeta(saved.meta);
+            setSourceMode('excel');
+            computeMissingArrivalInfo(fullData, colIsinIndex, colQtyIndex, colNameIndex);
+            buildYearFilterOptions(fullData, colDateIndex);
+            applyYearFilter();
+            renderSupplementaryReports();
+            switchTab('portfolio');
+            updateButtonsState();
+          } catch (error) {
+            console.error(error);
+            showWarning('Не удалось восстановить сохранённый отчёт.');
+          }
+        }
+
+        function renderSupplementaryReports() {
+          const hasDividends = dividendsDataFull && dividendsDataFull.length > 1;
+          const hasRepo      = repoDataFull && repoDataFull.length > 1;
+          const hasCb        = cbData && cbData.length > 1;
+
+          if (!hasDividends && dividendsTable) dividendsTable.innerHTML = '';
+          if (!hasRepo && repoTable)           repoTable.innerHTML      = '';
+          if (!hasCb && cbTable)               cbTable.innerHTML        = '';
+
+          let allowDivUpload  = false;
+          let allowRepoUpload = false;
+          let allowCbUpload   = false;
+
+          if (dividendsUploadPanel) {
+            if (hasDividends) dividendsUploadPanel.style.display = 'none';
+            else { dividendsUploadPanel.style.display = 'inline-flex'; allowDivUpload = true; }
+          }
+
+          if (repoUploadPanel) {
+            if (hasRepo) repoUploadPanel.style.display = 'none';
+            else { repoUploadPanel.style.display = 'inline-flex'; allowRepoUpload = true; }
+          }
+
+          if (cbUploadPanel) {
+            if (hasCb) cbUploadPanel.style.display = 'none';
+            else { cbUploadPanel.style.display = 'inline-flex'; allowCbUpload = true; }
+          }
+
+          tabBtnDividends.disabled = !hasDividends && !allowDivUpload;
+          tabBtnRepo.disabled      = !hasRepo      && !allowRepoUpload;
+          tabBtnCb.disabled        = !hasCb        && !allowCbUpload;
+
+          applyYearFilterToDividendsAndRepo();
+          renderSimpleTable(cbTable, cbData, { asOfDate: cbAsOfDate });
         }
 
         function resetMeta() {
@@ -1325,7 +1451,7 @@ window.addEventListener('keydown', (e) => {
             if (processBtn) processBtn.disabled = !hasFile;
           }
 
-          resetBtn.disabled    = !hasFile && !hasData; 
+          resetBtn.disabled    = !hasFile && !fullData; 
           exportBtn.disabled   = !hasData;                   
           updateYearReportButtonState();
         }
@@ -1384,8 +1510,10 @@ window.addEventListener('keydown', (e) => {
         }
 
         const handleSubProcess = (file, type) => {
+            const generation = reportGeneration;
             const reader = new FileReader();
             reader.onload = (e) => {
+                if (generation !== reportGeneration) return;
                 try {
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, {type: 'array'});
@@ -1412,6 +1540,7 @@ window.addEventListener('keydown', (e) => {
                             cbUploadPanel.style.display = 'none';
                         }
                     }
+                    saveLoadedReport();
                 } catch (err) {
                     console.error(err);
                     alert('Ошибка при чтении файла');
@@ -2325,43 +2454,12 @@ window.addEventListener('keydown', (e) => {
             dividendsDataFull = dividendsData;
             repoDataFull      = repoData;
 
-            const hasDividends = dividendsDataFull && dividendsDataFull.length > 1;
-            const hasRepo      = repoDataFull && repoDataFull.length > 1;
-            const hasCb        = cbData && cbData.length > 1;
-
-            if (!hasDividends && dividendsTable) dividendsTable.innerHTML = '';
-            if (!hasRepo && repoTable)           repoTable.innerHTML      = '';
-            if (!hasCb && cbTable)               cbTable.innerHTML        = '';
-
-            let allowDivUpload  = false;
-            let allowRepoUpload = false;
-            let allowCbUpload   = false;
-
-            if (dividendsUploadPanel) {
-              if (hasDividends) dividendsUploadPanel.style.display = 'none';
-              else { dividendsUploadPanel.style.display = 'inline-flex'; allowDivUpload = true; }
-            }
-
-            if (repoUploadPanel) {
-              if (hasRepo) repoUploadPanel.style.display = 'none';
-              else { repoUploadPanel.style.display = 'inline-flex'; allowRepoUpload = true; }
-            }
-
-            if (cbUploadPanel) {
-              if (hasCb) cbUploadPanel.style.display = 'none';
-              else { cbUploadPanel.style.display = 'inline-flex'; allowCbUpload = true; }
-            }
-
-            tabBtnDividends.disabled = !hasDividends && !allowDivUpload;
-            tabBtnRepo.disabled      = !hasRepo      && !allowRepoUpload;
-            tabBtnCb.disabled        = !hasCb        && !allowCbUpload;
-
-            applyYearFilterToDividendsAndRepo();
-            renderSimpleTable(cbTable, cbData, { asOfDate: cbAsOfDate });
+            renderSupplementaryReports();
 
             if (sourceLabelForUi) fileLabel.textContent = sourceLabelForUi;
             switchTab('portfolio');
             updateButtonsState();
+            saveLoadedReport();
 
           } catch (err) {
             console.error(err);
@@ -2374,8 +2472,10 @@ window.addEventListener('keydown', (e) => {
             alert('Сначала выберите Excel.');
             return;
           }
+          const generation = reportGeneration;
           const reader = new FileReader();
           reader.onload = (e) => {
+            if (generation !== reportGeneration) return;
             processWorkbookArrayBuffer(e.target.result, selectedFile.name);
           };
           reader.readAsArrayBuffer(selectedFile);
@@ -3039,6 +3139,7 @@ window.addEventListener('keydown', (e) => {
                 colProfitKztIndex
               );
              updateNavStats();
+             saveLoadedReport();
              return;
           }
 
@@ -3073,6 +3174,7 @@ window.addEventListener('keydown', (e) => {
                 colProfitKztIndex
             );
           }
+          saveLoadedReport();
         }
 function isEditableTd(td){
   if (!td) return false;
@@ -3146,6 +3248,12 @@ function attachLongPressEdit(table){
         }
 
         resetBtn.addEventListener('click', () => {
+          reportGeneration++;
+          try {
+            localStorage.removeItem(reportStorageKey);
+          } catch (error) {
+            console.error(error);
+          }
           fileInput.value        = '';
           selectedFile           = null;
           lastData               = null;
@@ -3972,6 +4080,7 @@ function attachLongPressEdit(table){
         updateNavStats();
         setSourceMode(null);
         resetMeta();
+        restoreLoadedReport();
 
       })();
     });
