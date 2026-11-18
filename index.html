@@ -439,6 +439,11 @@
         min-width: 100px;
     }
 
+    #table-container { min-width: 0; }
+    #table-container .table-wrapper { overflow-x: auto; }
+    #table-container .fifo-average-col { min-width: 116px; }
+    #table-container td.fifo-average-col { white-space: nowrap; }
+
     .cell-isin { font-family: monospace; letter-spacing: -0.5px; }
 
     .data-table th {
@@ -769,7 +774,7 @@
       <p id="portfolio-status" role="status">Загрузите Excel и нажмите «Рассчитать», чтобы увидеть открытые позиции.</p>
       <div class="table-wrapper" id="portfolio-table-wrapper" hidden>
         <table class="data-table">
-          <thead><tr><th>Инструмент</th><th>ISIN</th><th>Количество</th><th title="Предварительная сумма отмечена звёздочкой, если валюта лотов заполнена не полностью">Себестоимость остатка</th><th>Средняя цена FIFO за 1 ЦБ</th></tr></thead>
+          <thead><tr><th>Инструмент</th><th>ISIN</th><th>Количество</th><th title="Предварительная сумма отмечена звёздочкой, если валюта лотов заполнена не полностью">Себестоимость остатка</th><th title="Средняя цена отображается с шестью знаками после запятой">Средняя цена FIFO за 1 ЦБ</th></tr></thead>
           <tbody id="portfolio-rows"></tbody>
         </table>
       </div>
@@ -1213,7 +1218,7 @@ window.addEventListener('keydown', (e) => {
             }
             const currency = valuation.hasMissingCurrency ? ' *' : ' ' + valuation.currency;
             costCell.textContent = formatNumberComma(valuation.cost) + currency;
-            averageCell.textContent = new Intl.NumberFormat('ru-KZ', { maximumFractionDigits: 8 }).format(valuation.average) + currency;
+            averageCell.textContent = new Intl.NumberFormat('ru-KZ', { minimumFractionDigits: 6, maximumFractionDigits: 6 }).format(valuation.average) + currency;
             if (valuation.hasMissingCurrency) {
               const note = document.createElement('small');
               note.style.display = 'block';
@@ -2227,8 +2232,10 @@ window.addEventListener('keydown', (e) => {
 
             const balanceQtyIndex  = ensureColumn('Остаток (шт)');
             const balanceCostIndex = ensureColumn('Балансовая стоимость остатка');
-            const avgCostTitle = 'Сред. цена на остаток по FIFO';
-            const legacyAvgCostIndex = findIndexCI('Сред. стоимость остатка');
+            const avgCostTitle = 'Средняя цена FIFO за 1 ЦБ';
+            const legacyAvgCostIndex = ['Сред. стоимость остатка', 'Сред. цена на остаток по FIFO']
+              .map(findIndexCI)
+              .find(index => index !== -1) ?? -1;
             if (legacyAvgCostIndex !== -1 && findIndexCI(avgCostTitle) === -1) {
               header[legacyAvgCostIndex] = avgCostTitle;
             }
@@ -2625,6 +2632,7 @@ window.addEventListener('keydown', (e) => {
                 const th = document.createElement('th');
                 th.textContent = h;
                 if (isCalcCol(colIndex)) th.classList.add('calc-col');
+                if (colIndex === avgCostColIndex) th.classList.add('fifo-average-col');
                 if (groupHasMultipleTickers && colIndex === colNameIndex) {
                   th.classList.add('market-highlight');
                 }
@@ -2698,7 +2706,7 @@ window.addEventListener('keydown', (e) => {
 
               row[colBalanceQtyIndex]  = balanceQty.toString();
               row[colBalanceCostIndex] = balanceCost ? formatNumberComma(balanceCost) : '';
-              row[colAvgCostIndex]     = balanceQty > 0 ? formatNumberComma(avgCost) : '';
+              row[colAvgCostIndex]     = balanceQty > 0 ? formatNumberComma(avgCost, 6) : '';
             }
 
             row[colCostIndex]        = costForRow;
@@ -2717,6 +2725,7 @@ window.addEventListener('keydown', (e) => {
               
               if (colIndex === colIsinIndex) td.classList.add('cell-isin');
               if (isCalcCol(colIndex))       td.classList.add('calc-col');
+              if (colIndex === avgCostColIndex) td.classList.add('fifo-average-col');
               
               if (colIndex === colCurrencyIndex && parseNumber(row[qtyColIndex]) > 0) {
                 td.classList.add('cell-edit-currency');
@@ -2874,7 +2883,7 @@ window.addEventListener('keydown', (e) => {
 
               row[colBalanceQtyIndex]  = balanceQty.toString();
               row[colBalanceCostIndex] = balanceCost ? formatNumberComma(balanceCost) : '';
-              row[colAvgCostIndex]     = balanceQty > 0 ? formatNumberComma(avgCost) : '';
+              row[colAvgCostIndex]     = balanceQty > 0 ? formatNumberComma(avgCost, 6) : '';
             }
 
             row[colCostIndex]        = costForRow;
