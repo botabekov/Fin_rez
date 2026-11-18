@@ -444,6 +444,29 @@
     #table-container .fifo-average-col { min-width: 116px; }
     #table-container td.fifo-average-col { white-space: nowrap; }
 
+    #position-detail:not([hidden]) + .instrument-detail-layout .nav-panel {
+      display: none;
+    }
+
+    @media (min-width: 1280px) {
+      #position-detail:not([hidden]) + .instrument-detail-layout .data-table {
+        table-layout: fixed;
+      }
+
+      #position-detail:not([hidden]) + .instrument-detail-layout .data-table th:nth-child(3),
+      #position-detail:not([hidden]) + .instrument-detail-layout .data-table td:nth-child(3) {
+        min-width: 0;
+      }
+
+      #position-detail:not([hidden]) + .instrument-detail-layout .data-table th:first-child {
+        width: 30px;
+      }
+
+      #position-detail:not([hidden]) + .instrument-detail-layout th.fifo-average-col {
+        width: 120px;
+      }
+    }
+
     .cell-isin { font-family: monospace; letter-spacing: -0.5px; }
 
     .data-table th {
@@ -784,7 +807,7 @@
         <button class="btn" id="back-to-portfolio" type="button">← Портфель</button>
         <strong id="position-detail-title"></strong>
       </div>
-      <div class="fi-layout">
+      <div class="fi-layout instrument-detail-layout">
         <div class="nav-overlay" id="nav-overlay"></div>
 
         <div id="nav-panel" class="nav-panel">
