@@ -306,6 +306,8 @@
       height: 100%;
     }
 
+    #tab-fi > .fi-layout { flex: 1; min-height: 0; }
+
     .nav-panel {
       width: 220px;
       flex-shrink: 0;
@@ -742,13 +744,27 @@
 
   <div class="content">
     <div class="tabs">
-      <button class="tab-btn tab-btn-active" id="tab-btn-fi" data-tab="fi">Движение инструментов</button>
+      <button class="tab-btn tab-btn-active" data-tab="portfolio">Портфель</button>
+      <button class="tab-btn" id="tab-btn-fi" data-tab="fi">Движение инструментов</button>
       <button class="tab-btn" id="tab-btn-dividends" data-tab="dividends" disabled>Дивиденды</button>
       <button class="tab-btn" id="tab-btn-repo" data-tab="repo" disabled>РЕПО</button>
       <button class="tab-btn" id="tab-btn-cb" data-tab="cb" disabled>Остатки ЦБ</button>
     </div>
 
-    <div id="tab-fi" class="tab-content tab-content-active" data-tab="fi">
+    <div id="tab-portfolio" class="tab-content tab-content-active" data-tab="portfolio" style="overflow:auto; padding:12px; flex-direction:column">
+      <p id="portfolio-status" role="status">Загрузите Excel и нажмите «Рассчитать», чтобы увидеть открытые позиции.</p>
+      <div class="table-wrapper" id="portfolio-table-wrapper" hidden>
+        <table class="data-table">
+          <thead><tr><th>Инструмент</th><th>ISIN</th><th>Количество</th></tr></thead>
+          <tbody id="portfolio-rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="tab-fi" class="tab-content" data-tab="fi" style="flex-direction:column">
+      <div id="position-detail" hidden style="padding:8px">
+        <button class="btn" id="back-to-portfolio" type="button">← Портфель</button>
+        <strong id="position-detail-title"></strong>
+      </div>
       <div class="fi-layout">
         <div class="nav-overlay" id="nav-overlay"></div>
 
@@ -1062,7 +1078,81 @@ window.addEventListener('keydown', (e) => {
         }
 
         // ---- Tabs ----
+        const portfolioRows = document.getElementById('portfolio-rows');
+        const portfolioStatus = document.getElementById('portfolio-status');
+        const portfolioTable = document.getElementById('portfolio-table-wrapper');
+        const positionDetail = document.getElementById('position-detail');
+        let selectedPosition = null;
+
+        function portfolioKey(row) {
+          const isin = String(row[colIsinIndex] ?? '').trim();
+          const ticker = extractTickerFromName(row[colNameIndex]);
+          return JSON.stringify([isin, ticker || '']);
+        }
+
+        function renderPortfolio() {
+          portfolioRows.replaceChildren();
+          portfolioTable.hidden = true;
+          if (!fullData) {
+            portfolioStatus.textContent = 'Загрузите Excel и нажмите «Рассчитать», чтобы увидеть открытые позиции.';
+            return;
+          }
+          if (colQtyIndex < 0) {
+            portfolioStatus.textContent = 'В Excel отсутствует колонка «Количество ЦБ».';
+            return;
+          }
+
+          const positions = new Map();
+          fullData.slice(1).forEach(row => {
+            const qty = parseNumber(row[colQtyIndex]);
+            if (!Number.isFinite(qty)) return;
+            const key = portfolioKey(row);
+            const [isin, ticker] = JSON.parse(key);
+            if (!positions.has(key)) {
+              positions.set(key, { isin, name: ticker || String(row[colNameIndex] || isin), qty: 0 });
+            }
+            positions.get(key).qty += qty;
+          });
+
+          let count = 0;
+          for (const [key, position] of positions) {
+            if (Math.abs(position.qty) < 1e-9) continue;
+            count++;
+            const tr = portfolioRows.insertRow();
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn';
+            button.textContent = position.name;
+            button.title = 'Посмотреть историю движений';
+            button.addEventListener('click', () => {
+              selectedPosition = key;
+              document.getElementById('position-detail-title').textContent = position.name + ' · ' + position.isin + ' · Все движения из файла';
+              positionDetail.hidden = false;
+              applyYearFilter();
+              switchTab('fi');
+            });
+            tr.insertCell().appendChild(button);
+            tr.insertCell().textContent = position.isin;
+            tr.insertCell().textContent = new Intl.NumberFormat('ru-KZ', { maximumFractionDigits: 12 }).format(position.qty);
+          }
+          portfolioTable.hidden = count === 0;
+          portfolioStatus.textContent = count ? 'Открытые позиции по движениям из загруженного файла · ' + count : 'По движениям из файла открытых позиций нет.';
+        }
+
+        function clearPositionDetail() {
+          if (selectedPosition === null) return;
+          selectedPosition = null;
+          positionDetail.hidden = true;
+          applyYearFilter();
+        }
+
+        document.getElementById('back-to-portfolio').addEventListener('click', () => {
+          clearPositionDetail();
+          switchTab('portfolio');
+        });
+
         function switchTab(name) {
+          if (name === 'portfolio') renderPortfolio();
           tabButtons.forEach(btn => {
             const isActive = btn.dataset.tab === name;
             btn.classList.toggle('tab-btn-active', isActive);
@@ -1075,6 +1165,7 @@ window.addEventListener('keydown', (e) => {
         tabButtons.forEach(btn => {
           btn.addEventListener('click', () => {
             if (btn.disabled) return;
+            clearPositionDetail();
             switchTab(btn.dataset.tab);
           });
         });
@@ -1099,7 +1190,7 @@ window.addEventListener('keydown', (e) => {
             return;
           }
           const val = yearFilter.value || 'all';
-          yearReportBtn.disabled = (val === 'portfolio');
+          yearReportBtn.disabled = (val === 'portfolio' || selectedPosition !== null);
         }
 
         function updateButtonsState() {
@@ -1719,7 +1810,9 @@ window.addEventListener('keydown', (e) => {
           const header  = fullData[0];
           const allRows = fullData.slice(1);
           
-          const rowsToUse = filterRows(allRows);
+          const rowsToUse = selectedPosition === null
+            ? filterRows(allRows)
+            : allRows.filter(row => portfolioKey(row) === selectedPosition);
 
           lastData = [header, ...rowsToUse];
           renderTablesByIsin(
@@ -2080,6 +2173,8 @@ window.addEventListener('keydown', (e) => {
                 return row;
               });
 
+            selectedPosition = null;
+            positionDetail.hidden = true;
             fullData = [header, ...dataRowsFi];
             lastData = fullData;
 
@@ -2144,7 +2239,7 @@ window.addEventListener('keydown', (e) => {
             renderSimpleTable(cbTable, cbData, { asOfDate: cbAsOfDate });
 
             if (sourceLabelForUi) fileLabel.textContent = sourceLabelForUi;
-            switchTab('fi');
+            switchTab('portfolio');
             updateButtonsState();
 
           } catch (err) {
@@ -2263,7 +2358,7 @@ window.addEventListener('keydown', (e) => {
                 });
             }, options);
 
-            document.querySelectorAll('.table-wrapper').forEach(section => {
+            tablesWrapper.querySelectorAll('.table-wrapper').forEach(section => {
                 scrollObserver.observe(section);
             });
         }
@@ -2970,7 +3065,9 @@ function attachLongPressEdit(table){
           tabBtnDividends.disabled = true;
           tabBtnRepo.disabled      = true;
           tabBtnCb.disabled        = true;
-          switchTab('fi');
+          selectedPosition = null;
+          positionDetail.hidden = true;
+          switchTab('portfolio');
 
           hideWarning();
           resetMeta();
