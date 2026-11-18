@@ -315,6 +315,12 @@
       padding: 12px;
     }
 
+    #portfolio-rows td.duplicate-isin {
+      background: #fef3c7;
+      color: #78350f;
+      font-weight: 600;
+    }
+
     #portfolio-table-wrapper {
       flex: none;
       overflow-x: auto;
@@ -797,7 +803,7 @@
       <p id="portfolio-status" role="status">Загрузите Excel и нажмите «Рассчитать», чтобы увидеть открытые позиции.</p>
       <div class="table-wrapper" id="portfolio-table-wrapper" hidden>
         <table class="data-table">
-          <thead><tr><th>Инструмент</th><th>ISIN</th><th>Количество</th><th title="Предварительная сумма отмечена звёздочкой, если валюта лотов заполнена не полностью">Себестоимость остатка</th><th title="Средняя цена отображается с шестью знаками после запятой">Средняя цена FIFO за 1 ЦБ</th></tr></thead>
+          <thead><tr><th>Инструмент</th><th title="Повторяющиеся ISIN подсвечены жёлтым">ISIN</th><th>Количество</th><th title="Предварительная сумма отмечена звёздочкой, если валюта лотов заполнена не полностью">Себестоимость остатка</th><th title="Средняя цена отображается с шестью знаками после запятой">Средняя цена FIFO за 1 ЦБ</th></tr></thead>
           <tbody id="portfolio-rows"></tbody>
         </table>
       </div>
@@ -1337,10 +1343,15 @@ window.addEventListener('keydown', (e) => {
             position.rows.push(row);
           });
 
-          let count = 0;
-          for (const [key, position] of positions) {
-            if (Math.abs(position.qty) < 1e-9) continue;
-            count++;
+          const visiblePositions = [...positions].filter(([, position]) => Math.abs(position.qty) >= 1e-9);
+          const isinCounts = new Map();
+          for (const [, position] of visiblePositions) {
+            const isin = position.isin.toUpperCase();
+            if (isin) isinCounts.set(isin, (isinCounts.get(isin) ?? 0) + 1);
+          }
+
+          const count = visiblePositions.length;
+          for (const [key, position] of visiblePositions) {
             const tr = portfolioRows.insertRow();
             const button = document.createElement('button');
             button.type = 'button';
@@ -1355,7 +1366,13 @@ window.addEventListener('keydown', (e) => {
               switchTab('fi');
             });
             tr.insertCell().appendChild(button);
-            tr.insertCell().textContent = position.isin;
+            const isinCell = tr.insertCell();
+            isinCell.textContent = position.isin;
+            const isinCount = isinCounts.get(position.isin.toUpperCase());
+            if (isinCount > 1) {
+              isinCell.classList.add('duplicate-isin');
+              isinCell.title = 'Этот ISIN повторяется в портфеле: ' + isinCount + ' поз.';
+            }
             tr.insertCell().textContent = new Intl.NumberFormat('ru-KZ', { maximumFractionDigits: 12 }).format(position.qty);
             const valuation = calculatePortfolioCost(position.rows, position.qty);
             const costCell = tr.insertCell();
