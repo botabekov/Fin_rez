@@ -769,7 +769,7 @@
       <p id="portfolio-status" role="status">Загрузите Excel и нажмите «Рассчитать», чтобы увидеть открытые позиции.</p>
       <div class="table-wrapper" id="portfolio-table-wrapper" hidden>
         <table class="data-table">
-          <thead><tr><th>Инструмент</th><th>ISIN</th><th>Количество</th><th>Себестоимость остатка</th><th>Средняя цена FIFO за 1 ЦБ</th></tr></thead>
+          <thead><tr><th>Инструмент</th><th>ISIN</th><th>Количество</th><th title="Предварительная сумма отмечена звёздочкой, если валюта лотов заполнена не полностью">Себестоимость остатка</th><th>Средняя цена FIFO за 1 ЦБ</th></tr></thead>
           <tbody id="portfolio-rows"></tbody>
         </table>
       </div>
@@ -1143,14 +1143,18 @@ window.addEventListener('keydown', (e) => {
           }
 
           const currencies = new Set(openLots.map(lot => lot.currency));
+          const hasMissingCurrency = currencies.delete('');
           if (currencies.size > 1) {
-            return { reason: currencies.has('')
-              ? 'Укажите валюту оставшихся лотов в деталях позиции'
-              : 'В оставшихся лотах разные валюты' };
+            return { reason: 'В оставшихся лотах разные валюты' };
           }
 
           const cost = openLots.reduce((total, lot) => total + lot.qty * lot.unitPrice, 0);
-          return { cost, average: cost / balanceQty, currency: openLots[0].currency };
+          return {
+            cost,
+            average: cost / balanceQty,
+            currency: hasMissingCurrency ? '' : (currencies.values().next().value ?? ''),
+            hasMissingCurrency
+          };
         }
 
         function renderPortfolio() {
@@ -1207,9 +1211,15 @@ window.addEventListener('keydown', (e) => {
               averageCell.textContent = '—';
               continue;
             }
-            const currency = valuation.currency ? ' ' + valuation.currency : '';
+            const currency = valuation.hasMissingCurrency ? ' *' : ' ' + valuation.currency;
             costCell.textContent = formatNumberComma(valuation.cost) + currency;
             averageCell.textContent = new Intl.NumberFormat('ru-KZ', { maximumFractionDigits: 8 }).format(valuation.average) + currency;
+            if (valuation.hasMissingCurrency) {
+              const note = document.createElement('small');
+              note.style.display = 'block';
+              note.textContent = '* Предварительно. Укажите валюту лотов в деталях позиции.';
+              costCell.appendChild(note);
+            }
           }
           portfolioTable.hidden = count === 0;
           portfolioStatus.textContent = count ? 'Открытые позиции по движениям из загруженного файла · ' + count : 'По движениям из файла открытых позиций нет.';
