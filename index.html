@@ -2227,7 +2227,12 @@ window.addEventListener('keydown', (e) => {
 
             const balanceQtyIndex  = ensureColumn('Остаток (шт)');
             const balanceCostIndex = ensureColumn('Балансовая стоимость остатка');
-            const avgCostIndex     = ensureColumn('Сред. стоимость остатка');
+            const avgCostTitle = 'Сред. цена на остаток по FIFO';
+            const legacyAvgCostIndex = findIndexCI('Сред. стоимость остатка');
+            if (legacyAvgCostIndex !== -1 && findIndexCI(avgCostTitle) === -1) {
+              header[legacyAvgCostIndex] = avgCostTitle;
+            }
+            const avgCostIndex     = ensureColumn(avgCostTitle);
 
             colPriceIndex        = priceIndex;
             colCoeffIndex        = coeffIndex;
