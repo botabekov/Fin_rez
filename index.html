@@ -473,6 +473,64 @@
       }
     }
 
+    .movement-table-viewport .data-table {
+      font-size: 11px;
+      color: #26354a;
+    }
+
+    .movement-table-viewport .data-table :is(th, td) {
+      border-color: #e1e8f0;
+      padding: 6px 5px;
+      line-height: 1.35;
+    }
+
+    .movement-table-viewport .data-table th {
+      color: #43556c;
+      font-size: 10px;
+      letter-spacing: 0;
+      text-transform: none;
+      vertical-align: middle;
+      background: #f4f7fb;
+    }
+
+    .movement-table-viewport tbody tr:hover td:not(.calc-col) {
+      box-shadow: inset 0 1px #dbe6f1, inset 0 -1px #dbe6f1;
+    }
+
+    .movement-table-viewport td.movement-description {
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+
+    .movement-table-viewport td.movement-number {
+      text-align: right;
+      overflow-wrap: normal;
+    }
+
+    .movement-table-viewport :is(th, td).movement-identifier {
+      font-family: inherit;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .movement-table-viewport th.movement-key-value {
+      background: #e7eff8;
+      color: #253e58;
+    }
+
+    .movement-table-viewport td.movement-key-value {
+      font-weight: 600;
+    }
+
+    .movement-table-viewport td.movement-key-value:not([class*="cell-edit"]) {
+      background: #f1f6fc;
+    }
+
+    @media (min-width: 1280px) {
+      .movement-table-viewport th.movement-name { width: 8.5%; }
+      .movement-table-viewport th.movement-operation { width: 8%; }
+    }
+
     .cell-isin { font-family: monospace; letter-spacing: -0.5px; }
 
     .data-table th {
@@ -838,7 +896,7 @@
           <div id="nav-list" class="nav-list"></div>
         </div>
 
-        <div id="table-container" class="table-viewport">
+        <div id="table-container" class="table-viewport movement-table-viewport">
           <div id="tables-wrapper"></div>
           <div class="content-placeholder" id="placeholder">
             <div>Загрузите файл или выберите источник данных</div>
@@ -2740,6 +2798,21 @@ window.addEventListener('keydown', (e) => {
             return tickerVal ? `${isinVal} (${tickerVal})` : isinVal;
           }
 
+          function styleMovementCell(cell, index) {
+            if (index === colNameIndex || index === colDirectionIndex || index === colTransferFromIndex || index === colTransferToIndex) {
+              cell.classList.add('movement-description');
+            }
+            if (index === colNameIndex) cell.classList.add('movement-name');
+            if (index === colDirectionIndex) cell.classList.add('movement-operation');
+            if (index === isinColIndex || /^ISIN(?:\s|$)/i.test(String(header[index] ?? '').trim())) {
+              cell.classList.add('movement-identifier');
+            }
+            if (index === qtyColIndex || index === priceColIndex || index === coeffColIndex || isCalcCol(index)) {
+              cell.classList.add('movement-number');
+            }
+            if (index === qtyColIndex || index === priceColIndex) cell.classList.add('movement-key-value');
+          }
+
           function isCalcCol(idx) {
             return idx === costColIndex ||
                    idx === saleAmountColIndex ||
@@ -2831,6 +2904,7 @@ window.addEventListener('keydown', (e) => {
 
                 const th = document.createElement('th');
                 th.textContent = h;
+                styleMovementCell(th, colIndex);
                 if (isCalcCol(colIndex)) th.classList.add('calc-col');
                 if (colIndex === avgCostColIndex) th.classList.add('fifo-average-col');
                 if (groupHasMultipleTickers && colIndex === colNameIndex) {
@@ -2924,6 +2998,7 @@ window.addEventListener('keydown', (e) => {
               td.dataset.colIndex = String(colIndex);
               
               if (colIndex === colIsinIndex) td.classList.add('cell-isin');
+              styleMovementCell(td, colIndex);
               if (isCalcCol(colIndex))       td.classList.add('calc-col');
               if (colIndex === avgCostColIndex) td.classList.add('fifo-average-col');
               
