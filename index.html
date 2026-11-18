@@ -507,10 +507,16 @@
       overflow-wrap: normal;
     }
 
-    .movement-table-viewport :is(th, td).movement-identifier {
+    .movement-table-viewport th.movement-identifier {
+      width: 108px;
+      min-width: 108px;
+    }
+
+    .movement-table-viewport td.movement-identifier {
       font-family: inherit;
       letter-spacing: 0;
-      overflow-wrap: anywhere;
+      white-space: nowrap;
+      overflow-wrap: normal;
     }
 
     .movement-table-viewport th.movement-key-value {
@@ -896,7 +902,7 @@
           <div id="nav-list" class="nav-list"></div>
         </div>
 
-        <div id="table-container" class="table-viewport movement-table-viewport">
+        <div id="table-container" class="table-viewport movement-table-viewport" data-isin-layout="single-line">
           <div id="tables-wrapper"></div>
           <div class="content-placeholder" id="placeholder">
             <div>Загрузите файл или выберите источник данных</div>
