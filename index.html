@@ -755,7 +755,7 @@
       <p id="portfolio-status" role="status">Загрузите Excel и нажмите «Рассчитать», чтобы увидеть открытые позиции.</p>
       <div class="table-wrapper" id="portfolio-table-wrapper" hidden>
         <table class="data-table">
-          <thead><tr><th>Инструмент</th><th>ISIN</th><th>Количество</th></tr></thead>
+          <thead><tr><th>Инструмент</th><th>ISIN</th><th>Количество</th><th>Себестоимость остатка</th><th>Средняя цена FIFO за 1 ЦБ</th></tr></thead>
           <tbody id="portfolio-rows"></tbody>
         </table>
       </div>
@@ -1090,6 +1090,53 @@ window.addEventListener('keydown', (e) => {
           return JSON.stringify([isin, ticker || '']);
         }
 
+        function calculatePortfolioCost(rows, balanceQty) {
+          const lots = [];
+          let firstLot = 0;
+          let missingQty = 0;
+          const tolerance = 1e-9;
+
+          for (const row of rows) {
+            const qty = parseNumber(row[colQtyIndex]);
+            if (!Number.isFinite(qty) || qty === 0) continue;
+            if (qty > 0) {
+              const price = parseNumber(row[colPriceIndex]);
+              const coefficient = parseNumber(row[colCoeffIndex]);
+              const unitPrice = Number.isFinite(price) && price !== 0 ? price : coefficient;
+              const currency = String(row[colCurrencyIndex] ?? '').trim().toUpperCase();
+              lots.push({ qty, unitPrice, currency });
+              continue;
+            }
+
+            let remaining = -qty;
+            while (remaining > 0 && firstLot < lots.length) {
+              const lot = lots[firstLot];
+              const consumed = Math.min(remaining, lot.qty);
+              remaining -= consumed;
+              lot.qty -= consumed;
+              if (lot.qty === 0) firstLot++;
+            }
+            missingQty += remaining;
+          }
+
+          if (balanceQty <= 0 || missingQty > tolerance) {
+            return { reason: 'Недостаточно данных о приходе бумаг' };
+          }
+
+          const openLots = lots.slice(firstLot).filter(lot => lot.qty > tolerance);
+          if (!openLots.length || openLots.some(lot => !Number.isFinite(lot.unitPrice) || lot.unitPrice === 0)) {
+            return { reason: 'Нет цены по одному или нескольким оставшимся лотам' };
+          }
+
+          const currencies = new Set(openLots.map(lot => lot.currency));
+          if (currencies.size > 1) {
+            return { reason: 'В оставшихся лотах разные валюты или валюта заполнена частично' };
+          }
+
+          const cost = openLots.reduce((total, lot) => total + lot.qty * lot.unitPrice, 0);
+          return { cost, average: cost / balanceQty, currency: openLots[0].currency };
+        }
+
         function renderPortfolio() {
           portfolioRows.replaceChildren();
           portfolioTable.hidden = true;
@@ -1109,9 +1156,11 @@ window.addEventListener('keydown', (e) => {
             const key = portfolioKey(row);
             const [isin, ticker] = JSON.parse(key);
             if (!positions.has(key)) {
-              positions.set(key, { isin, name: ticker || String(row[colNameIndex] || isin), qty: 0 });
+              positions.set(key, { isin, name: ticker || String(row[colNameIndex] || isin), qty: 0, rows: [] });
             }
-            positions.get(key).qty += qty;
+            const position = positions.get(key);
+            position.qty += qty;
+            position.rows.push(row);
           });
 
           let count = 0;
@@ -1134,6 +1183,17 @@ window.addEventListener('keydown', (e) => {
             tr.insertCell().appendChild(button);
             tr.insertCell().textContent = position.isin;
             tr.insertCell().textContent = new Intl.NumberFormat('ru-KZ', { maximumFractionDigits: 12 }).format(position.qty);
+            const valuation = calculatePortfolioCost(position.rows, position.qty);
+            const costCell = tr.insertCell();
+            const averageCell = tr.insertCell();
+            if (valuation.reason) {
+              costCell.textContent = valuation.reason;
+              averageCell.textContent = '—';
+              continue;
+            }
+            const currency = valuation.currency ? ' ' + valuation.currency : '';
+            costCell.textContent = formatNumberComma(valuation.cost) + currency;
+            averageCell.textContent = new Intl.NumberFormat('ru-KZ', { maximumFractionDigits: 8 }).format(valuation.average) + currency;
           }
           portfolioTable.hidden = count === 0;
           portfolioStatus.textContent = count ? 'Открытые позиции по движениям из загруженного файла · ' + count : 'По движениям из файла открытых позиций нет.';
