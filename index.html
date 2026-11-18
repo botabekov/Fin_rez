@@ -800,7 +800,7 @@
     </div>
 
     <div id="tab-portfolio" class="tab-content tab-content-active" data-tab="portfolio">
-      <p id="portfolio-status" role="status">Загрузите Excel и нажмите «Рассчитать», чтобы увидеть открытые позиции.</p>
+      <p id="portfolio-status" role="status" title="При наличии отчёта «Остатки ЦБ» позиции берутся из него">Загрузите Excel и нажмите «Рассчитать», чтобы увидеть открытые позиции.</p>
       <div class="table-wrapper" id="portfolio-table-wrapper" hidden>
         <table class="data-table">
           <thead><tr><th>Инструмент</th><th title="Повторяющиеся ISIN подсвечены жёлтым">ISIN</th><th>Количество</th><th title="Предварительная сумма отмечена звёздочкой, если валюта лотов заполнена не полностью">Себестоимость остатка</th><th title="Средняя цена отображается с шестью знаками после запятой">Средняя цена FIFO за 1 ЦБ</th></tr></thead>
@@ -1317,6 +1317,60 @@ window.addEventListener('keydown', (e) => {
           };
         }
 
+        function getPortfolioFromBalances(movements) {
+          if (!cbData?.length) return null;
+          const headers = cbData[0].map(value => String(value ?? '').trim().toUpperCase());
+          const isinIndex = headers.findIndex(title => /^ISIN\b/.test(title));
+          const qtyIndex = headers.findIndex(title => /^(КОЛИЧЕСТВО|КОЛ[. -]?ВО|КОЛ-ВО|ОСТАТОК)(?:[\s,.(]|$)/.test(title));
+          const nameIndex = headers.findIndex(title => /^НАИМЕНОВАНИЕ/.test(title));
+          if (isinIndex < 0 || qtyIndex < 0) return null;
+
+          const balances = cbData.slice(1).flatMap(row => {
+            const isin = String(row[isinIndex] ?? '').trim().toUpperCase();
+            const qty = parseNumber(row[qtyIndex]);
+            if (!/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(isin) || !Number.isFinite(qty) || Math.abs(qty) < 1e-9) return [];
+            const name = String(row[nameIndex] ?? '').trim();
+            const ticker = name.includes(',') ? extractTickerFromName(name) : '';
+            return [{ isin, qty, name, ticker }];
+          });
+          if (!balances.length && cbData.slice(1).some(row => /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/i.test(String(row[isinIndex] ?? '').trim()) && !Number.isFinite(parseNumber(row[qtyIndex])))) return null;
+
+          const movementsByIsin = new Map();
+          for (const [key, movement] of movements) {
+            const isin = movement.isin.toUpperCase();
+            if (!movementsByIsin.has(isin)) movementsByIsin.set(isin, []);
+            movementsByIsin.get(isin).push({ ...movement, ticker: JSON.parse(key)[1].toUpperCase() });
+          }
+
+          const balanceCounts = new Map();
+          const tickerCounts = new Map();
+          for (const { isin, ticker } of balances) {
+            balanceCounts.set(isin, (balanceCounts.get(isin) ?? 0) + 1);
+            const key = JSON.stringify([isin, ticker.toUpperCase()]);
+            tickerCounts.set(key, (tickerCounts.get(key) ?? 0) + 1);
+          }
+          const rowOrder = new Map(fullData.map((row, index) => [row, index]));
+
+          return balances.map(balance => {
+            const { isin, ticker, qty } = balance;
+            const candidates = movementsByIsin.get(isin) ?? [];
+            const singlePosition = balanceCounts.get(isin) === 1;
+            const canMatchTicker = ticker && tickerCounts.get(JSON.stringify([isin, ticker.toUpperCase()])) === 1;
+            const matched = singlePosition ? candidates
+              : canMatchTicker ? candidates.filter(movement => movement.ticker === ticker.toUpperCase()) : [];
+            const rows = matched.flatMap(movement => movement.rows).sort((a, b) => rowOrder.get(a) - rowOrder.get(b));
+            if (rows.every(row => Number.isFinite(parseExcelDateStr(row[colDateIndex])?.getTime()))) {
+              rows.sort((a, b) => parseExcelDateStr(a[colDateIndex]) - parseExcelDateStr(b[colDateIndex]));
+            }
+            const movementQty = matched.reduce((total, movement) => total + movement.qty, 0);
+            const tickers = candidates.filter(movement => Math.abs(movement.qty) >= 1e-9 && movement.ticker);
+            const name = ticker || (tickers.length === 1 ? tickers[0].name : balance.name.replace(/^,\s*/, '') || isin);
+            const reason = !rows.length ? 'Требуется сверка: движения не сопоставлены'
+              : Math.abs(movementQty - qty) >= 1e-9 ? 'Требуется сверка: количество по движениям отличается' : '';
+            return { isin, qty, name, rows, reason, merged: singlePosition && matched.length > 1 };
+          });
+        }
+
         function renderPortfolio() {
           portfolioRows.replaceChildren();
           portfolioTable.hidden = true;
@@ -1343,23 +1397,25 @@ window.addEventListener('keydown', (e) => {
             position.rows.push(row);
           });
 
-          const visiblePositions = [...positions].filter(([, position]) => Math.abs(position.qty) >= 1e-9);
+          const reportedPositions = getPortfolioFromBalances(positions);
+          const visiblePositions = reportedPositions ?? [...positions.values()].filter(position => Math.abs(position.qty) >= 1e-9);
           const isinCounts = new Map();
-          for (const [, position] of visiblePositions) {
+          for (const position of visiblePositions) {
             const isin = position.isin.toUpperCase();
             if (isin) isinCounts.set(isin, (isinCounts.get(isin) ?? 0) + 1);
           }
 
           const count = visiblePositions.length;
-          for (const [key, position] of visiblePositions) {
+          for (const position of visiblePositions) {
             const tr = portfolioRows.insertRow();
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'btn';
             button.textContent = position.name;
-            button.title = 'Посмотреть историю движений';
+            button.disabled = position.rows.length === 0;
+            button.title = button.disabled ? 'Движения не сопоставлены' : 'Посмотреть историю движений';
             button.addEventListener('click', () => {
-              selectedPosition = key;
+              selectedPosition = position;
               document.getElementById('position-detail-title').textContent = position.name + ' · ' + position.isin + ' · Все движения из файла';
               positionDetail.hidden = false;
               applyYearFilter();
@@ -1374,7 +1430,7 @@ window.addEventListener('keydown', (e) => {
               isinCell.title = 'Этот ISIN повторяется в портфеле: ' + isinCount + ' поз.';
             }
             tr.insertCell().textContent = new Intl.NumberFormat('ru-KZ', { maximumFractionDigits: 12 }).format(position.qty);
-            const valuation = calculatePortfolioCost(position.rows, position.qty);
+            const valuation = position.reason ? { reason: position.reason } : calculatePortfolioCost(position.rows, position.qty);
             const costCell = tr.insertCell();
             const averageCell = tr.insertCell();
             if (valuation.reason) {
@@ -1393,7 +1449,8 @@ window.addEventListener('keydown', (e) => {
             }
           }
           portfolioTable.hidden = count === 0;
-          portfolioStatus.textContent = count ? 'Открытые позиции по движениям из загруженного файла · ' + count : 'По движениям из файла открытых позиций нет.';
+          const source = reportedPositions ? 'По отчёту «Остатки ЦБ»' : 'Предварительно по движениям';
+          portfolioStatus.textContent = source + ' · Открытых позиций: ' + count;
         }
 
         function clearPositionDetail() {
@@ -2072,7 +2129,7 @@ window.addEventListener('keydown', (e) => {
           
           const rowsToUse = selectedPosition === null
             ? filterRows(allRows)
-            : allRows.filter(row => portfolioKey(row) === selectedPosition);
+            : selectedPosition.rows;
 
           lastData = [header, ...rowsToUse];
           renderTablesByIsin(
@@ -2658,6 +2715,7 @@ window.addEventListener('keydown', (e) => {
           const shownNoteForIsin = {};
 
           function getGroupKey(row) {
+            if (selectedPosition?.merged) return selectedPosition.isin;
             const isinVal =
               isinColIndex != null && isinColIndex >= 0 && row[isinColIndex] !== undefined
                 ? String(row[isinColIndex]).trim()
@@ -2670,6 +2728,7 @@ window.addEventListener('keydown', (e) => {
           }
 
           function getLabelFromKey(row) {
+            if (selectedPosition?.merged) return selectedPosition.isin + ' (' + selectedPosition.name + ')';
             const isinVal =
               isinColIndex != null && isinColIndex >= 0 && row[isinColIndex] !== undefined
                 ? String(row[isinColIndex]).trim()
@@ -2754,7 +2813,8 @@ window.addEventListener('keydown', (e) => {
                 const noteDiv = document.createElement('div');
                 noteDiv.className = 'local-note';
                 noteDiv.textContent =
-                  'Обратите внимание: по данному ISIN в отчёте встретилось несколько разных тикеров. FIFO и средняя цена рассчитываются отдельно по связке ISIN+тикер.';
+                  selectedPosition?.merged ? 'Остаток объединяет движения по нескольким тикерам. FIFO рассчитан по общей истории.'
+                    : 'По этому ISIN встречается несколько тикеров. FIFO рассчитан отдельно по связке ISIN и тикера.';
                 wrapper.appendChild(noteDiv);
                 shownNoteForIsin[isinVal] = true;
               }
