@@ -306,6 +306,8 @@
       height: 100%;
     }
 
+    .cell-edit-currency { cursor: text; }
+
     #tab-portfolio {
       min-height: 0;
       flex-direction: column;
@@ -1142,7 +1144,9 @@ window.addEventListener('keydown', (e) => {
 
           const currencies = new Set(openLots.map(lot => lot.currency));
           if (currencies.size > 1) {
-            return { reason: 'В оставшихся лотах разные валюты или валюта заполнена частично' };
+            return { reason: currencies.has('')
+              ? 'Укажите валюту оставшихся лотов в деталях позиции'
+              : 'В оставшихся лотах разные валюты' };
           }
 
           const cost = openLots.reduce((total, lot) => total + lot.qty * lot.unitPrice, 0);
@@ -2699,6 +2703,10 @@ window.addEventListener('keydown', (e) => {
               if (colIndex === colIsinIndex) td.classList.add('cell-isin');
               if (isCalcCol(colIndex))       td.classList.add('calc-col');
               
+              if (colIndex === colCurrencyIndex && parseNumber(row[qtyColIndex]) > 0) {
+                td.classList.add('cell-edit-currency');
+                td.title = 'Двойной клик для редактирования кода валюты';
+              }
               if (colIndex === colNameIndex) {
                 td.classList.add('cell-edit-name');
                 td.title = 'Двойной клик для изменения наименования';
@@ -2959,7 +2967,15 @@ window.addEventListener('keydown', (e) => {
           const colIndex = parseInt(td.dataset.colIndex, 10);
           
           if (!isNaN(rowIndex) && !isNaN(colIndex) && lastData && lastData[rowIndex]) {
-            lastData[rowIndex][colIndex] = td.textContent.trim();
+            const row = lastData[rowIndex];
+            const value = td.textContent.trim();
+            if (colIndex === colCurrencyIndex) {
+              const currency = value.toUpperCase();
+              if (!currency || /^[A-Z]{3}$/.test(currency)) row[colIndex] = currency;
+              td.textContent = row[colIndex] ?? '';
+            } else {
+              row[colIndex] = value;
+            }
           }
 
           td.removeAttribute('contenteditable');
@@ -3029,7 +3045,8 @@ function isEditableTd(td){
     td.classList.contains('cell-edited-red') ||
     td.classList.contains('cell-edited-yellow') ||
     td.classList.contains('cell-edit-name') ||
-    td.classList.contains('cell-edit-transfer')
+    td.classList.contains('cell-edit-transfer') ||
+    td.classList.contains('cell-edit-currency')
   );
 }
 
