@@ -126,6 +126,14 @@
     .btn-success { background: var(--success-bg); color: var(--success); border-color: #bbf7d0; }
     .btn-success:hover:not([disabled]) { background: #dcfce7; }
 
+    #tax-report-link {
+      background: var(--primary-light);
+      border-color: var(--primary);
+      color: var(--primary);
+      text-decoration: none;
+    }
+    #tax-report-link:hover { background: #dbeafe; }
+
     .btn-selected {
       background: var(--primary-light);
       border-color: var(--primary);
@@ -800,7 +808,7 @@
       <button class="btn btn-primary" id="process-btn" type="button" disabled>Рассчитать</button>
       <button title="Очистить загруженные и сохранённые данные" class="btn btn-danger" id="reset-btn" type="button" disabled>Сброс</button>
       <button class="btn btn-success" id="export-btn" type="button" disabled>Экспорт</button>
-      <a class="btn" id="tax-report-link" href="./tax-report.html" target="_blank" rel="noopener" style="text-decoration: none">Сборка налогового отчёта</a>
+      <a class="btn" id="tax-report-link" href="./tax-report.html" target="_blank" rel="noopener">Сборка налогового отчёта</a>
     </div>
 
     <div class="toolbar-group">
