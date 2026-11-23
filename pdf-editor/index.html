@@ -79,7 +79,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     <h1>Редактируйте PDF прямо на странице</h1>
     <p>Загрузите документ, дважды нажмите на текст для редактирования, добавляйте таблицы и сохраняйте изменённый PDF. Обработка происходит в вашем браузере.</p>
     <div class="empty-actions"><button class="btn primary" id="emptyOpen">Выбрать PDF</button><button class="btn" id="demoBtn">Открыть демо-документ</button></div>
-    <div class="warning">Прототип: изменение существующего текста визуальное. Исходные данные под заменённым текстом могут оставаться внутри файла. Не используйте для удаления конфиденциальной информации.</div>
+    <div class="warning">Прототип: изменение существующего текста визуальное. Исходные данные под заменённым текстом могут оставаться внутри файла. Не используйте для удаления конфиденциальной информации. Изменение официального отчёта не обновляет сведения в источнике и не подтверждает подлинность изменённой копии.</div>
    </div>
   </div>
   <div class="canvas-wrap hidden" id="canvasWrap"><canvas id="pdfCanvas"></canvas><div class="layer" id="layer"></div></div>
@@ -250,7 +250,7 @@ function choose(s){S.selected=s;syncSelected();document.querySelectorAll(".eleme
 function editText(el,obj,kind,id){
  if(el.querySelector("textarea"))return;var current=esc(obj.text);el.innerHTML="";
  var input=document.createElement("textarea");input.className="inline-editor";input.value=current;input.style.fontSize=obj.fontSize*S.scale+"px";input.style.fontFamily=textFontFamily(obj);input.style.fontWeight=obj.bold&&!obj.fontFace?"700":"400";input.style.fontStyle=obj.italic&&!obj.fontFace?"italic":"normal";input.style.lineHeight="1.1";el.appendChild(input);input.focus();input.select();
- function finish(){if(input.value!==current){setProperty("text",input.value);}else renderPage();}
+ function finish(){if(input.value!==current){S.selected=kind==="source"?{kind:"source",index:id}:{kind:"added",id:id};setProperty("text",input.value);}else renderPage();}
  input.addEventListener("blur",finish,{once:true});
  input.addEventListener("keydown",function(ev){if(ev.key==="Escape"){input.value=current;input.blur();}if(ev.key==="Enter"&&!ev.shiftKey){ev.preventDefault();input.blur();}});
 }
@@ -263,6 +263,7 @@ function setProperty(key,val){
  if(S.selected.kind==="source")o=ensureEdit();
  if(!o)return;
  o[key]=val;
+ if((key==="fontFamily"||key==="bold"||key==="italic")&&o.fontFace)o.fontFace="";
  persist();renderPage();
 }
 function syncSelected(){
