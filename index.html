@@ -969,15 +969,17 @@
       <div class="simple-table-container">
         <div class="sub-upload-panel" id="repo-upload-panel">
           <div>
-              <strong>Нет данных РЕПО.</strong><br>
+              <strong>Форма РЕПО не загружена.</strong><br>
               <span style="font-size:10px; color:#64748b;">Загрузите файл.</span>
           </div>
           <label class="btn" for="repo-file-input">Обзор...</label>
           <input id="repo-file-input" class="file-input" type="file" accept=".xlsx,.xls,.csv" />
           <span class="file-label" id="repo-file-label" style="max-width:120px;">...</span>
           <button class="btn btn-primary" id="repo-process-btn" type="button" disabled>Добавить</button>
+          <button class="btn" id="repo-empty-btn" type="button">Операций не было</button>
         </div>
         <div class="table-wrapper" style="border:none; box-shadow:none;">
+          <p id="repo-empty-status" role="status" hidden>Форма РЕПО добавлена. Операций нет.</p>
           <table id="repo-table" class="data-table"></table>
         </div>
       </div>
@@ -1324,7 +1326,7 @@ window.addEventListener('keydown', (e) => {
 
         function renderSupplementaryReports() {
           const hasDividends = dividendsDataFull && dividendsDataFull.length > 1;
-          const hasRepo      = repoDataFull && repoDataFull.length > 1;
+          const hasRepo      = !!repoDataFull?.length;
           const hasCb        = cbData && cbData.length > 1;
 
           if (!hasDividends && dividendsTable) dividendsTable.innerHTML = '';
@@ -1722,11 +1724,18 @@ window.addEventListener('keydown', (e) => {
                             dividendsUploadPanel.style.display = 'none';
                         }
                     } else if (type === 'repo') {
-                        repoDataFull = normalizeRepoTable(extractSimpleTableFromSheet(sheet));
-                        applyYearFilterToDividendsAndRepo(yearFilter.value || 'all');
-                        if (repoDataFull && repoDataFull.length > 1) {
-                            repoUploadPanel.style.display = 'none';
+                        let table = extractSimpleTableFromSheet(sheet);
+                        if (!table && sheet && XLSX.utils.sheet_to_json(sheet, { header: 1 }).every(row =>
+                            row.every(cell => !String(cell ?? '').trim()))) {
+                            if (!confirm('Файл пуст. Добавить форму РЕПО с нулём операций?')) return;
+                            table = emptyRepoTable();
                         }
+                        if (!table) {
+                            alert('В файле не найдена таблица РЕПО. Если за период операций не было, выберите «Операций не было».');
+                            return;
+                        }
+                        repoDataFull = normalizeRepoTable(table);
+                        renderSupplementaryReports();
                     } else if (type === 'cb') {
                         cbData = extractSimpleTableFromSheet(sheet);
                         cbAsOfDate = extractCbAsOfDateFromSheet(sheet);
@@ -1751,6 +1760,19 @@ window.addEventListener('keydown', (e) => {
                 if (dividendsSelectedFile) handleSubProcess(dividendsSelectedFile, 'dividends');
             });
         }
+        function emptyRepoTable() {
+            return [['№', 'Дата транзакции']];
+        }
+
+        document.getElementById('repo-empty-btn').addEventListener('click', () => {
+            if (!fullData || !confirm('Подтвердите, что по этому счёту за период отчёта операций РЕПО не было.')) return;
+            repoDataFull = emptyRepoTable();
+            delete reportSources.repo;
+            renderSupplementaryReports();
+            saveLoadedReport();
+            updateButtonsState();
+        });
+
         if (repoProcessBtn) {
             repoProcessBtn.addEventListener('click', () => {
                 if (repoSelectedFile) handleSubProcess(repoSelectedFile, 'repo');
@@ -2315,6 +2337,7 @@ window.addEventListener('keydown', (e) => {
         }
 
         function applyYearFilterToDividendsAndRepo() {
+          document.getElementById('repo-empty-status').hidden = repoDataFull?.length !== 1;
           if (dividendsDataFull && dividendsTable) {
             dividendsData = filterSimpleTableByDateRange(dividendsDataFull, 'ДАТА ТРАНЗАКЦИИ');
             renderSimpleTable(dividendsTable, dividendsData);
@@ -3493,6 +3516,7 @@ function attachLongPressEdit(table){
           cbAsOfDate             = '';
           dividendsDataFull      = null;
           repoDataFull           = null;
+          document.getElementById('repo-empty-status').hidden = true;
           editedCells            = new Map();
 
           dividendsSelectedFile = null;
@@ -3767,7 +3791,7 @@ function attachLongPressEdit(table){
   const movement = full ? fullData : lastData;
   const hasFi = movement && movement.length > (full ? 0 : 1);
   const hasDiv = dividendsDataFull && dividendsDataFull.length > (full ? 0 : 1);
-  const hasRepo = repoDataFull && repoDataFull.length > (full ? 0 : 1);
+  const hasRepo = !!repoDataFull?.length;
   const hasCb = cbData && cbData.length > (full ? 0 : 1);
 
   if (!hasFi && !hasDiv && !hasRepo && !hasCb) {
