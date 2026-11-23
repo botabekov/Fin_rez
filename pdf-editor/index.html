@@ -162,13 +162,35 @@ async function renderPage(){
  tc.items.forEach(function(it,index){
   if(!it.str||!it.str.trim())return;
   var tr=pdfjsLib.Util.transform(viewport.transform,it.transform);
-  var fontPx=Math.max(5,Math.hypot(tr[2],tr[3]));var w=Math.max(8,it.width*S.scale);var h=Math.max(10,fontPx*1.25);
-  var obj={type:"source",page:S.page,index:index,x:tr[4]/S.scale,y:(tr[5]-fontPx)/S.scale,w:w/S.scale,h:h/S.scale,fontSize:fontPx/S.scale,color:"#18283d",text:it.str};
+  var fontPx=Math.max(5,Math.hypot(tr[2],tr[3]));
+  var st=tc.styles[it.fontName]||{},fo=null;
+  try{fo=pg.commonObjs.get(it.fontName);}catch(e){}
+  var rawName=String((fo&&(fo.name||fo.fallbackName))||st.fontFamily||"Arial").replace(/^[A-Z]{6}\+/,"");
+  var family=rawName.replace(/[-,](Bold|SemiBold|DemiBold|ExtraBold|Black|Heavy|Italic|Oblique|Regular)(.*)$/i,"")||"Arial";
+  var isBold=!!(fo&&fo.bold)||/bold|black|heavy|demi/i.test(rawName);
+  var isItalic=!!(fo&&fo.italic)||/italic|oblique/i.test(rawName);
+  var ascent=Number.isFinite(st.ascent)?st.ascent:.8;
+  var descent=Number.isFinite(st.descent)?st.descent:-.2;
+  var left=tr[4]/S.scale, top=(tr[5]-fontPx*ascent)/S.scale;
+  var w=Math.max(8,it.width*S.scale)/S.scale;
+  var h=Math.max(fontPx*1.2,fontPx*(ascent-descent)+2)/S.scale;
+  var obj={type:"source",page:S.page,index:index,x:left,y:top,w:w,h:h,fontSize:fontPx/S.scale,color:"#000000",text:it.str,fontFamily:family,fontFace:(fo&&fo.loadedName)||"",bold:isBold,italic:isItalic,ascent:ascent};
   S.texts.push(obj);
-  var edited=findEdit(index),v=edited||obj;
+  var edited=findEdit(index);
+  if(edited){
+   ["fontFamily","fontFace","bold","italic","ascent"].forEach(function(k){if(edited[k]===undefined)edited[k]=obj[k];});
+  }
+  var v=edited||obj;
   var el=createDiv("element source"+(edited?" modified":"")+(isSelected("source",index)?" selected":""),v.x,v.y,v.w,v.h);
-  el.style.fontSize=v.fontSize*S.scale+"px";el.style.lineHeight="1.12";el.style.color=edited?v.color:"transparent";
-  el.style.background=edited?"white":"transparent";el.textContent=edited?v.text:"";
+  el.style.fontSize=v.fontSize*S.scale+"px";
+  el.style.fontFamily=textFontFamily(v);
+  el.style.fontWeight=v.bold&&!v.fontFace?"700":"400";
+  el.style.fontStyle=v.italic&&!v.fontFace?"italic":"normal";
+  el.style.lineHeight="1";
+  el.style.color=edited?v.color:"transparent";
+  el.style.background=edited?"white":"transparent";
+  el.style.overflow="visible";
+  el.textContent=edited?v.text:"";
   el.dataset.sourceIndex=String(index);el.title="Дважды нажмите для редактирования: "+obj.text;
   el.addEventListener("click",function(ev){ev.stopPropagation();choose({kind:"source",index:index});});
   el.addEventListener("dblclick",function(ev){ev.stopPropagation();choose({kind:"source",index:index});editText(el,edited||obj,"source",index);});
@@ -180,12 +202,21 @@ async function renderPage(){
  $("footerState").textContent=S.numPages+" стр. · "+S.edits.length+" замен · "+S.added.length+" новых объектов";
  syncSelected();updateControls();highlightThumb();
 }
+function textFontFamily(o){
+ var name=String(o.fontFace||o.fontFamily||"Arial").replace(/["\\]/g,"");
+ var fallback=String(o.fontFamily||"Arial").replace(/["\\]/g,"");
+ return '"'+name+'", "'+fallback+'", Arial, sans-serif';
+}
+function textCanvasFont(o){
+ var prefix=(o.italic&&!o.fontFace?"italic ":"")+(o.bold&&!o.fontFace?"bold ":"");
+ return prefix+Math.max(6,o.fontSize)+"px "+textFontFamily(o);
+}
 function isSelected(kind,id){return S.selected&&S.selected.kind===kind&&(kind==="added"?S.selected.id===id:S.selected.index===id);}
 function drawAdded(layer,a){
  var el=createDiv("element added"+(isSelected("added",a.id)?" selected":""),a.x,a.y,a.w,a.h);
  el.dataset.id=a.id;
  if(a.type==="text"){
-  el.style.fontSize=a.fontSize*S.scale+"px";el.style.lineHeight="1.18";el.style.color=a.color;el.textContent=a.text;
+  el.style.fontSize=a.fontSize*S.scale+"px";el.style.lineHeight="1.18";el.style.fontFamily=textFontFamily(a);el.style.fontWeight=a.bold?"700":"400";el.style.fontStyle=a.italic?"italic":"normal";el.style.color=a.color;el.textContent=a.text;
   el.ondblclick=function(ev){ev.stopPropagation();choose({kind:"added",id:a.id});editText(el,a,"added",a.id);};
  }else{
   var tbl=document.createElement("div");tbl.className="table-box";tbl.style.gridTemplateColumns="repeat("+a.cols+",1fr)";tbl.style.gridTemplateRows="repeat("+a.rows+",1fr)";
@@ -218,7 +249,7 @@ function startDrag(ev,el,a){
 function choose(s){S.selected=s;syncSelected();document.querySelectorAll(".element").forEach(function(el){el.classList.remove("selected");});var obj=selectedObject();if(obj){document.querySelectorAll(".element").forEach(function(el){if((s.kind==="added"&&el.dataset.id===s.id)||(s.kind==="source"&&el.dataset.sourceIndex===String(s.index)))el.classList.add("selected");});}}
 function editText(el,obj,kind,id){
  if(el.querySelector("textarea"))return;var current=esc(obj.text);el.innerHTML="";
- var input=document.createElement("textarea");input.className="inline-editor";input.value=current;input.style.fontSize=obj.fontSize*S.scale+"px";el.appendChild(input);input.focus();input.select();
+ var input=document.createElement("textarea");input.className="inline-editor";input.value=current;input.style.fontSize=obj.fontSize*S.scale+"px";input.style.fontFamily=textFontFamily(obj);input.style.fontWeight=obj.bold&&!obj.fontFace?"700":"400";input.style.fontStyle=obj.italic&&!obj.fontFace?"italic":"normal";input.style.lineHeight="1.1";el.appendChild(input);input.focus();input.select();
  function finish(){if(input.value!==current){setProperty("text",input.value);}else renderPage();}
  input.addEventListener("blur",finish,{once:true});
  input.addEventListener("keydown",function(ev){if(ev.key==="Escape"){input.value=current;input.blur();}if(ev.key==="Enter"&&!ev.shiftKey){ev.preventDefault();input.blur();}});
@@ -239,7 +270,7 @@ function syncSelected(){
  if(!o){host.innerHTML='<p class="i-note">Выберите текст на странице или добавьте текст/таблицу. Дважды нажмите на текст, чтобы изменить его.</p>';return;}
  host.innerHTML="";
  var heading=document.createElement("p");heading.style.fontWeight="800";heading.style.fontSize="13px";heading.textContent=o.type==="table"?"Таблица":S.selected.kind==="source"?"Исходный текст":"Текстовый блок";host.appendChild(heading);
- if(o.type!=="table"){makeProp(host,"Текст","text",o.text,"textarea");makeProp(host,"Размер шрифта, pt","fontSize",o.fontSize,"number");makeProp(host,"Цвет текста","color",o.color,"color");}
+ if(o.type!=="table"){makeProp(host,"Текст","text",o.text,"textarea");makeProp(host,"Шрифт","fontFamily",o.fontFamily||"Arial","text");makeProp(host,"Размер шрифта, pt","fontSize",o.fontSize,"number");makeProp(host,"Цвет текста","color",o.color,"color");var weight=document.createElement("div");weight.className="prop";var label=document.createElement("label");var check=document.createElement("input");check.type="checkbox";check.checked=!!o.bold;check.style.width="auto";check.style.marginRight="9px";check.addEventListener("change",function(){setProperty("bold",check.checked);});label.appendChild(check);label.appendChild(document.createTextNode("Жирный шрифт"));weight.appendChild(label);host.appendChild(weight);}
  var row=document.createElement("div");row.className="prop-row";makeProp(row,"X","x",o.x,"number");makeProp(row,"Y","y",o.y,"number");host.appendChild(row);
  row=document.createElement("div");row.className="prop-row";makeProp(row,"Ширина","w",o.w,"number");makeProp(row,"Высота","h",o.h,"number");host.appendChild(row);
  if(o.type==="table"){
@@ -260,7 +291,7 @@ function makeProp(host,label,key,value,type){
 function addObject(kind){
  if(!S.doc)return;
  record();var pageWidth=$("pdfCanvas").getBoundingClientRect().width/S.scale;
- var a={id:"obj-"+(++S.seq),type:kind,page:S.page,x:Math.max(18,(pageWidth-(kind==="table"?370:270))/2),y:90,w:kind==="table"?370:270,h:kind==="table"?122:34,fontSize:12,color:"#20324b",text:"Новый текст"};
+ var a={id:"obj-"+(++S.seq),type:kind,page:S.page,fontFamily:"Arial",bold:false,italic:false,ascent:.8,x:Math.max(18,(pageWidth-(kind==="table"?370:270))/2),y:90,w:kind==="table"?370:270,h:kind==="table"?122:34,fontSize:12,color:"#20324b",text:"Новый текст"};
  if(kind==="table"){a.rows=3;a.cols=3;a.cells=["Наименование","Кол-во","Сумма","Услуга A","2","100 000","Услуга Б","1","50 000"];}
  S.added.push(a);S.selected={kind:"added",id:a.id};persist();renderPage();toast(kind==="table"?"Таблица добавлена — дважды нажмите на ячейку":"Текст добавлен — дважды нажмите для редактирования");
 }
@@ -270,17 +301,24 @@ function updateControls(){var ready=!!S.doc;
  $("undoBtn").disabled=!S.undo.length;$("redoBtn").disabled=!S.redo.length;
 }
 function stringColor(hex){hex=hex||"#20324b";return hex;}
-async function textPng(text,w,h,fontSize,color){
+async function textPng(a){
+ var text=a.text,w=a.w,h=a.h,fontSize=a.fontSize,color=a.color;
  var ratio=3;var can=document.createElement("canvas");can.width=Math.max(1,Math.ceil(w*ratio));can.height=Math.max(1,Math.ceil(h*ratio));
  var ctx=can.getContext("2d");ctx.scale(ratio,ratio);ctx.clearRect(0,0,w,h);
- ctx.font=Math.max(7,fontSize)+"px Arial, sans-serif";ctx.textBaseline="top";ctx.fillStyle=stringColor(color);
- var lh=Math.max(9,fontSize*1.18),y=0,lines=esc(text).split("\n");
+ ctx.font=textCanvasFont(a);ctx.textBaseline="alphabetic";ctx.fillStyle=stringColor(color);
+ var lh=Math.max(8,fontSize*1.15),y=0,lines=esc(text).split("\n");
+ var baseline=fontSize*Math.max(.65,Math.min(.95,a.ascent||.8));
  for(var k=0;k<lines.length;k++){
   var words=lines[k].split(/(\s+)/),line="";
   for(var j=0;j<words.length;j++){
-   if(ctx.measureText(line+words[j]).width>w-2&&line){ctx.fillText(line,0,y);y+=lh;line=words[j].trimStart();if(y>h-lh)break;}else line+=words[j];
+   if(ctx.measureText(line+words[j]).width>w-1&&line){
+    ctx.fillText(line,0,baseline+y);y+=lh;line=words[j].trimStart();
+    if(y+baseline>h)break;
+   }else line+=words[j];
   }
-  if(y>h-lh)break;ctx.fillText(line,0,y);y+=lh;if(y>h-lh)break;
+  if(y+baseline>h)break;
+  ctx.fillText(line,0,baseline+y);y+=lh;
+  if(y+baseline>h)break;
  }
  return can.toDataURL("image/png");
 }
@@ -307,7 +345,7 @@ async function exportPDF(){
    var pw=pg.getWidth(),ph=pg.getHeight();var x=Math.max(0,Math.min(a.x,pw)),y=Math.max(0,ph-a.y-a.h),w=Math.min(a.w,pw-x),h=Math.min(a.h,ph-y);
    if(w<=0||h<=0)continue;
    if(a.type==="replace"){pg.drawRectangle({x:x,y:y,width:w,height:h,color:PDFLib.rgb(1,1,1)});}
-   var png=await (a.type==="table"?tablePng(a):textPng(a.text,a.w,a.h,a.fontSize,a.color));
+   var png=await (a.type==="table"?tablePng(a):textPng(a));
    var embedded=await doc.embedPng(png);pg.drawImage(embedded,{x:x,y:y,width:w,height:h});
   }
   var result=await doc.save();var blob=new Blob([result],{type:"application/pdf"});var url=URL.createObjectURL(blob);
