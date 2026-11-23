@@ -792,6 +792,31 @@
 </head>
 <body>
 
+<dialog id="project-dialog" aria-labelledby="project-title" style="width:min(760px, 92vw); max-height:85vh; border:1px solid #cbd5e1; border-radius:8px">
+  <h2 id="project-title">История и версии</h2>
+  <p>Версии хранятся в этом браузере. Копия содержит текущий отчёт и его правки.</p>
+  <button class="btn" id="version-save" type="button">Сохранить версию</button>
+  <button class="btn" id="project-save" type="button">Скачать копию</button>
+  <button class="btn" id="project-open" type="button">Открыть копию</button>
+  <input hidden id="project-file" type="file" accept=".json,application/json">
+  <p id="project-status" role="status"></p>
+  <h3>Версии</h3><ul id="version-list"></ul>
+  <h3>Правки текущего отчёта</h3><ol id="change-list"></ol>
+  <form method="dialog"><button class="btn">Закрыть</button></form>
+</dialog>
+<dialog id="four-dialog" aria-labelledby="four-title" style="width:min(460px, 92vw); border:1px solid #cbd5e1; border-radius:8px">
+  <form id="four-form">
+    <h2 id="four-title">Выгрузить 4 формы</h2>
+    <p id="four-account"></p>
+    <p>В Excel попадут все строки загруженных форм с текущими правками.</p>
+    <p><label>Начало периода <input id="four-start" type="date" required></label></p>
+    <p><label>Конец периода <input id="four-end" type="date" required></label></p>
+    <p><label><input id="four-confirm" type="checkbox" required> Подтверждаю, что формы относятся к одному счёту и периоду, а остатки ЦБ сформированы на конец периода.</label></p>
+    <p id="four-status" role="status"></p>
+    <button class="btn btn-primary">Скачать Excel</button>
+    <button class="btn" id="four-cancel" type="button">Отмена</button>
+  </form>
+</dialog>
 <div class="app">
   <div class="toolbar">
     <div class="toolbar-group">
@@ -808,6 +833,8 @@
       <button class="btn btn-primary" id="process-btn" type="button" disabled>Рассчитать</button>
       <button title="Очистить загруженные и сохранённые данные" class="btn btn-danger" id="reset-btn" type="button" disabled>Сброс</button>
       <button class="btn btn-success" id="export-btn" type="button" disabled>Экспорт</button>
+      <button class="btn" id="project-btn" type="button">История и версии</button>
+      <button class="btn btn-success" id="four-btn" type="button" disabled>Выгрузить 4 формы</button>
       <a class="btn" id="tax-report-link" href="./tax-report.html" target="_blank" rel="noopener">Сборка налогового отчёта</a>
     </div>
 
@@ -1188,11 +1215,11 @@ window.addEventListener('keydown', (e) => {
 
         const reportStorageKey = 'fin-rez:loaded-report:v1';
         let reportGeneration = 0;
+        let reportChanges = [];
+        let reportSources = {};
 
-        function saveLoadedReport() {
-          if (!fullData) return;
-          try {
-            localStorage.setItem(reportStorageKey, JSON.stringify({
+        function snapshotReport() {
+          return {
               colPriceIndex,
               colCoeffIndex,
               colIsinIndex,
@@ -1220,18 +1247,42 @@ window.addEventListener('keydown', (e) => {
               cbAsOfDate,
               filename: fileLabel.textContent,
               meta: { fio: metaFio.value, account: metaAccount.value, asOf: metaAsOf.value },
-              editedCells: [...editedCells]
-            }));
+              editedCells: [...editedCells], reportChanges, reportSources
+          };
+        }
+
+        function saveLoadedReport() {
+          if (!fullData) return false;
+          try {
+            localStorage.setItem(reportStorageKey, JSON.stringify(snapshotReport()));
+            return true;
           } catch (error) {
             console.error(error);
             showWarning('Браузер не смог сохранить данные для восстановления после обновления страницы.');
+            return false;
           }
         }
 
         function restoreLoadedReport() {
           try {
             const saved = JSON.parse(localStorage.getItem(reportStorageKey));
-            if (!saved || !Array.isArray(saved.fullData) || !Array.isArray(saved.fullData[0])) return;
+            if (saved) loadReportSnapshot(saved);
+          } catch (error) {
+            console.error(error);
+            showWarning('Не удалось восстановить сохранённый отчёт.');
+          }
+        }
+
+        function loadReportSnapshot(saved) {
+            if (!validReportSnapshot(saved)) throw new Error('Некорректная копия отчёта.');
+            reportGeneration++;
+            selectedPosition = null;
+            positionDetail.hidden = true;
+            selectedFile = null;
+            currentEditingCell = null;
+            fileInput.value = '';
+            reportChanges = saved.reportChanges || [];
+            reportSources = saved.reportSources || {};
             ({
               colPriceIndex,
               colCoeffIndex,
@@ -1269,10 +1320,6 @@ window.addEventListener('keydown', (e) => {
             renderSupplementaryReports();
             switchTab('portfolio');
             updateButtonsState();
-          } catch (error) {
-            console.error(error);
-            showWarning('Не удалось восстановить сохранённый отчёт.');
-          }
         }
 
         function renderSupplementaryReports() {
@@ -1599,6 +1646,7 @@ window.addEventListener('keydown', (e) => {
           }
 
           resetBtn.disabled    = !hasFile && !fullData; 
+          document.getElementById('four-btn').disabled = !fullData;
           exportBtn.disabled   = !hasData;                   
           updateYearReportButtonState();
         }
@@ -1687,10 +1735,12 @@ window.addEventListener('keydown', (e) => {
                             cbUploadPanel.style.display = 'none';
                         }
                     }
+                    reportSources[type] = extractHeaderInfoFromFiSheet(sheet);
                     saveLoadedReport();
+                    updateButtonsState();
                 } catch (err) {
-                    console.error(err);
-                    alert('Ошибка при чтении файла');
+                     console.error(err);
+                     alert('Ошибка при чтении файла');
                 }
             };
             reader.readAsArrayBuffer(file);
@@ -2389,7 +2439,6 @@ window.addEventListener('keydown', (e) => {
             if (!hasData) break;
             resultRows.push(row.slice(0, headerRow.length));
           }
-          if (!resultRows.length) return null;
           return [headerRow, ...resultRows];
         }
 
@@ -2572,6 +2621,7 @@ window.addEventListener('keydown', (e) => {
 
             selectedPosition = null;
             positionDetail.hidden = true;
+            reportChanges = [];
             fullData = [header, ...dataRowsFi];
             lastData = fullData;
 
@@ -2593,6 +2643,11 @@ window.addEventListener('keydown', (e) => {
             const sheetRepo      = sheetNames[2] ? workbook.Sheets[sheetNames[2]] : null;
             const sheetCb        = sheetNames[3] ? workbook.Sheets[sheetNames[3]] : null;
 
+            reportSources = {
+              dividends: extractHeaderInfoFromFiSheet(sheetDividends),
+              repo: extractHeaderInfoFromFiSheet(sheetRepo),
+              cb: extractHeaderInfoFromFiSheet(sheetCb)
+            };
             dividendsData = normalizeDividendsTable(extractSimpleTableFromSheet(sheetDividends));
             repoData      = normalizeRepoTable(extractSimpleTableFromSheet(sheetRepo));
             cbAsOfDate    = extractCbAsOfDateFromSheet(sheetCb);
@@ -3282,6 +3337,7 @@ window.addEventListener('keydown', (e) => {
           
           if (!isNaN(rowIndex) && !isNaN(colIndex) && lastData && lastData[rowIndex]) {
             const row = lastData[rowIndex];
+            const before = row[colIndex];
             const value = td.textContent.trim();
             if (colIndex === colCurrencyIndex) {
               const currency = value.toUpperCase();
@@ -3290,6 +3346,7 @@ window.addEventListener('keydown', (e) => {
             } else {
               row[colIndex] = value;
             }
+            addReportChange(row, colIndex, before, row[colIndex]);
           }
 
           td.removeAttribute('contenteditable');
@@ -3416,6 +3473,8 @@ function attachLongPressEdit(table){
 
         resetBtn.addEventListener('click', () => {
           reportGeneration++;
+          reportChanges = [];
+          reportSources = {};
           try {
             localStorage.removeItem(reportStorageKey);
           } catch (error) {
@@ -3491,11 +3550,225 @@ function attachLongPressEdit(table){
           updateButtonsState();
         });
 
-        exportBtn.addEventListener('click', () => {
-  const hasFi = lastData && lastData.length > 1;
-  const hasDiv = dividendsDataFull && dividendsDataFull.length > 1;
-  const hasRepo = repoDataFull && repoDataFull.length > 1;
-  const hasCb = cbData && cbData.length > 1;
+        const projectElement = id => document.getElementById(id);
+        const versionsKey = 'fin-rez:report-versions:v1';
+        const forms = () => [
+          ['Движение', fullData, colDateIndex],
+          ['Дивиденды', dividendsDataFull, transactionDateColumn(dividendsDataFull)],
+          ['РЕПО', repoDataFull, transactionDateColumn(repoDataFull)],
+          ['Остатки ЦБ', cbData, -1]
+        ];
+
+        function transactionDateColumn(table) {
+          return table?.[0]?.findIndex(value => normalizeKey(value) === 'ДАТА ТРАНЗАКЦИИ') ?? -1;
+        }
+
+        function reportDate(value) {
+          const parts = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(String(value ?? '').trim());
+          if (!parts) return '';
+          return [parts[3], parts[2].padStart(2, '0'), parts[1].padStart(2, '0')].join('-');
+        }
+
+        function addReportChange(row, column, before, after, restored = false) {
+          if (String(before ?? '') === String(after ?? '')) return;
+          const index = fullData.indexOf(row);
+          if (index < 1) return;
+          reportChanges.push({
+            row: index, column, before: before ?? '', after: after ?? '',
+            operation: [row[colDateIndex], row[colNameIndex], row[colIsinIndex]].filter(Boolean).join(' · '),
+            time: new Date().toISOString(), restored
+          });
+        }
+
+        function validReportSnapshot(saved) {
+          const cell = value => value === null || ['string', 'number', 'boolean'].includes(typeof value);
+          const table = value => Array.isArray(value) && value.length > 0 &&
+            value.every(row => Array.isArray(row) && row.every(cell));
+          return saved && table(saved.fullData) &&
+            ['dividendsDataFull', 'repoDataFull', 'cbData'].every(key => saved[key] == null || table(saved[key])) &&
+            ['colPriceIndex', 'colIsinIndex', 'colQtyIndex'].every(key => Number.isInteger(saved[key])) &&
+            Array.isArray(saved.editedCells) && saved.editedCells.every(pair => Array.isArray(pair) && pair.length === 2) &&
+            (saved.reportChanges === undefined || (Array.isArray(saved.reportChanges) && saved.reportChanges.every(change =>
+              change && Number.isInteger(change.row) && change.row > 0 && change.row < saved.fullData.length &&
+              Number.isInteger(change.column) && change.column >= 0 && change.column < saved.fullData[0].length &&
+              cell(change.before) && cell(change.after) && typeof change.time === 'string')));
+        }
+
+        function readVersions() {
+          return JSON.parse(localStorage.getItem(versionsKey) || '[]');
+        }
+
+        function projectListItem(list, label, actionLabel, action, commentAction) {
+          const item = document.createElement('li');
+          item.textContent = label + ' ';
+          if (action) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn';
+            button.textContent = actionLabel;
+            button.addEventListener('click', action);
+            item.append(button);
+          }
+          if (commentAction) {
+            const commentButton = document.createElement('button');
+            commentButton.type = 'button';
+            commentButton.className = 'btn';
+            commentButton.textContent = 'Комментарий';
+            commentButton.addEventListener('click', commentAction);
+            item.append(' ', commentButton);
+          }
+          list.append(item);
+        }
+
+        function renderProject() {
+          const versions = projectElement('version-list');
+          const changes = projectElement('change-list');
+          versions.replaceChildren();
+          changes.replaceChildren();
+          projectElement('version-save').disabled = !fullData;
+          projectElement('project-save').disabled = !fullData;
+          try {
+            const saved = readVersions();
+            if (!saved.length) projectListItem(versions, 'Версий пока нет.');
+            saved.slice().reverse().forEach(version => {
+              projectListItem(versions, [version.name, version.report.meta?.account, new Date(version.time).toLocaleString('ru-RU')].filter(Boolean).join(' · '), 'Открыть', () => openSnapshot(version.report));
+            });
+          } catch {
+            projectListItem(versions, 'Не удалось прочитать сохранённые версии.');
+          }
+          if (!reportChanges.length) projectListItem(changes, 'Правок пока нет.');
+          const latest = new Set();
+          reportChanges.slice().reverse().forEach(change => {
+            const key = change.row + ':' + change.column;
+            const canUndo = !latest.has(key) && !change.restored && String(fullData[change.row][change.column] ?? '') === String(change.after);
+            latest.add(key);
+            const label = [new Date(change.time).toLocaleString('ru-RU'), change.operation,
+              fullData[0][change.column], String(change.before) + ' → ' + String(change.after), change.comment].filter(Boolean).join(' · ');
+            projectListItem(changes, label, 'Отменить правку', canUndo ? () => undoReportChange(change) : null, () => {
+              const comment = prompt('Комментарий к правке', change.comment || '');
+              if (comment === null) return;
+              change.comment = comment.trim();
+              if (!saveLoadedReport()) projectElement('project-status').textContent = 'Браузер не смог сохранить комментарий.';
+              renderProject();
+            });
+          });
+        }
+
+        function undoReportChange(change) {
+          const row = fullData[change.row];
+          const before = row[change.column];
+          row[change.column] = change.before;
+          addReportChange(row, change.column, before, change.before, true);
+          if ([colPriceIndex, colCoeffIndex, colQtyIndex].includes(change.column)) recomputeFifoInLastData();
+          computeMissingArrivalInfo(fullData, colIsinIndex, colQtyIndex, colNameIndex);
+          applyYearFilter();
+          if (document.querySelector('.tab-btn-active')?.dataset.tab === 'portfolio') renderPortfolio();
+          saveLoadedReport();
+          renderProject();
+        }
+
+        function openSnapshot(report) {
+          const status = projectElement('project-status');
+          try {
+            if (!validReportSnapshot(report)) throw new Error('Файл проекта не распознан.');
+            if (fullData && !confirm('Заменить текущий рабочий отчёт выбранной версией или копией?')) return;
+            loadReportSnapshot(report);
+            status.textContent = saveLoadedReport() ? 'Отчёт открыт.' : 'Отчёт открыт. Браузер не смог сохранить его после обновления страницы.';
+            renderProject();
+          } catch (error) {
+            status.textContent = error.message;
+          }
+        }
+
+        projectElement('project-btn').addEventListener('click', () => {
+          projectElement('project-status').textContent = '';
+          renderProject();
+          projectElement('project-dialog').showModal();
+        });
+        projectElement('version-save').addEventListener('click', () => {
+          const name = prompt('Название версии', 'Проверенный отчёт')?.trim();
+          if (!name || !fullData) return;
+          const status = projectElement('project-status');
+          try {
+            const versions = readVersions();
+            versions.push({ name, time: new Date().toISOString(), report: snapshotReport() });
+            localStorage.setItem(versionsKey, JSON.stringify(versions));
+            status.textContent = 'Версия сохранена.';
+            renderProject();
+          } catch {
+            status.textContent = 'Не удалось сохранить версию в браузере. Скачайте копию отчёта.';
+          }
+        });
+        projectElement('project-save').addEventListener('click', () => {
+          if (!fullData) return;
+          const file = new Blob([JSON.stringify({ format: 'fin-rez-project', version: 1, report: snapshotReport() })], { type: 'application/json' });
+          const url = URL.createObjectURL(file);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'fin-rez-project-' + new Date().toISOString().slice(0, 10) + '.json';
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        });
+        projectElement('project-open').addEventListener('click', () => projectElement('project-file').click());
+        projectElement('project-file').addEventListener('change', async event => {
+          const file = event.target.files[0];
+          event.target.value = '';
+          if (!file) return;
+          try {
+            const copy = JSON.parse(await file.text());
+            if (copy.format !== 'fin-rez-project' || copy.version !== 1) throw new Error();
+            openSnapshot(copy.report);
+          } catch {
+            projectElement('project-status').textContent = 'Выберите JSON-копию, скачанную из «Финреза».';
+          }
+        });
+
+        projectElement('four-btn').addEventListener('click', () => {
+          projectElement('four-form').reset();
+          const account = metaAccount.value.trim();
+          projectElement('four-account').textContent = account ? 'Брокерский счёт ' + account : 'Номер брокерского счёта не распознан.';
+          const missing = forms().filter(([, rows]) => !rows?.length).map(([name]) => name);
+          projectElement('four-status').textContent = missing.length ? 'Загрузите формы: ' + missing.join(', ') : '';
+          projectElement('four-form').querySelector('button[type="submit"], button:not([type])').disabled = !!missing.length;
+          projectElement('four-dialog').showModal();
+        });
+        projectElement('four-cancel').addEventListener('click', () => projectElement('four-dialog').close());
+        projectElement('four-form').addEventListener('submit', event => {
+          event.preventDefault();
+          const start = projectElement('four-start').value;
+          const end = projectElement('four-end').value;
+          const status = projectElement('four-status');
+          const account = metaAccount.value.trim();
+          const mismatch = Object.values(reportSources).some(source => account && typeof source?.account === 'string' && source.account.trim() && source.account.trim() !== account);
+          const balanceDate = reportDate(cbAsOfDate);
+          const tables = forms();
+          const outside = tables.find(([, rows, column]) => column >= 0 && rows?.slice(1).some(row => {
+            const date = reportDate(row[column]);
+            return date && (date < start || date > end);
+          }));
+          if (start > end) status.textContent = 'Дата начала позже даты окончания.';
+          else if (mismatch) status.textContent = 'Номера брокерских счетов в загруженных формах различаются.';
+          else if (balanceDate && balanceDate !== end) status.textContent = 'Остатки ЦБ сформированы на ' + cbAsOfDate + '. Укажите эту дату окончания или загрузите нужные остатки.';
+          else if (outside) status.textContent = 'В форме «' + outside[0] + '» есть операции за пределами указанного периода.';
+          else if (tables.some(([, rows]) => !rows?.length)) status.textContent = 'Для выгрузки нужны все четыре формы.';
+          else {
+            try {
+              exportReportWorkbook(true, [start, end]);
+              projectElement('four-dialog').close();
+            } catch (error) {
+              console.error(error);
+              status.textContent = 'Не удалось сформировать Excel.';
+            }
+          }
+        });
+
+        exportBtn.addEventListener('click', () => exportReportWorkbook(false));
+        function exportReportWorkbook(full, period = []) {
+  const movement = full ? fullData : lastData;
+  const hasFi = movement && movement.length > (full ? 0 : 1);
+  const hasDiv = dividendsDataFull && dividendsDataFull.length > (full ? 0 : 1);
+  const hasRepo = repoDataFull && repoDataFull.length > (full ? 0 : 1);
+  const hasCb = cbData && cbData.length > (full ? 0 : 1);
 
   if (!hasFi && !hasDiv && !hasRepo && !hasCb) {
     alert('Нет данных для выгрузки.');
@@ -3506,7 +3779,7 @@ function attachLongPressEdit(table){
 
   // 1) Движение
   if (hasFi) {
-    const wsFi = XLSX.utils.aoa_to_sheet(lastData);
+    const wsFi = XLSX.utils.aoa_to_sheet(movement);
     XLSX.utils.book_append_sheet(wb, wsFi, 'Движение');
   }
 
@@ -3525,7 +3798,9 @@ function attachLongPressEdit(table){
   // 4) Остатки ЦБ
   if (hasCb) {
     let aoaCb = cbData;
-    if (cbAsOfDate) {
+    if (cbAsOfDate && full) {
+      aoaCb = [['По состоянию на', cbAsOfDate], ...cbData];
+    } else if (cbAsOfDate) {
       const cols = (cbData[0] || []).length || 1;
       const infoRow = new Array(cols).fill('');
       infoRow[0] = 'По состоянию на: ' + cbAsOfDate;
@@ -3546,8 +3821,9 @@ function attachLongPressEdit(table){
   if (acc) fileNameParts.push(safe(acc));
   if (asOf) fileNameParts.push(safe(asOf));
 
+  if (full) fileNameParts.push(...period);
   XLSX.writeFile(wb, fileNameParts.join(' - ') + '.xlsx');
-});
+}
 
 
         // ===== Year report =====
