@@ -215,8 +215,14 @@ async function renderPage(){
   el.style.lineHeight="1";
   el.style.color=edited?v.color:"transparent";
   el.style.background=edited?"white":"transparent";
-  el.style.overflow="visible";
-  el.textContent=edited?v.text:"";
+  el.style.overflow="hidden";
+  if(edited){
+   var graphic=document.createElement("img");
+   graphic.src=textPng(v);
+   graphic.alt="Обновлённый текст";
+   graphic.style.cssText="display:block;width:100%;height:100%;pointer-events:none";
+   el.appendChild(graphic);
+  }
   el.dataset.sourceIndex=String(index);el.title="Дважды нажмите для редактирования: "+obj.text;
   el.addEventListener("click",function(ev){ev.stopPropagation();choose({kind:"source",index:index});});
   el.addEventListener("dblclick",function(ev){ev.stopPropagation();choose({kind:"source",index:index});editText(el,edited||obj,"source",index);});
@@ -242,7 +248,11 @@ function drawAdded(layer,a){
  var el=createDiv("element added"+(isSelected("added",a.id)?" selected":""),a.x,a.y,a.w,a.h);
  el.dataset.id=a.id;
  if(a.type==="text"){
-  el.style.fontSize=a.fontSize*S.scale+"px";el.style.lineHeight="1.18";el.style.fontFamily=textFontFamily(a);el.style.fontWeight=a.bold?"700":"400";el.style.fontStyle=a.italic?"italic":"normal";el.style.color=a.color;el.textContent=a.text;
+  el.style.fontSize=a.fontSize*S.scale+"px";el.style.lineHeight="1.18";el.style.fontFamily=textFontFamily(a);el.style.fontWeight=a.bold?"700":"400";el.style.fontStyle=a.italic?"italic":"normal";el.style.color=a.color;
+  var graphic=document.createElement("img");
+  graphic.src=textPng(a);graphic.alt="Добавленный текст";
+  graphic.style.cssText="display:block;width:100%;height:100%;pointer-events:none";
+  el.appendChild(graphic);
   el.ondblclick=function(ev){ev.stopPropagation();choose({kind:"added",id:a.id});editText(el,a,"added",a.id);};
  }else{
   var tbl=document.createElement("div");tbl.className="table-box";tbl.style.gridTemplateColumns="repeat("+a.cols+",1fr)";tbl.style.gridTemplateRows="repeat("+a.rows+",1fr)";
@@ -328,24 +338,49 @@ function updateControls(){var ready=!!S.doc;
  $("undoBtn").disabled=!S.undo.length;$("redoBtn").disabled=!S.redo.length;
 }
 function stringColor(hex){hex=hex||"#20324b";return hex;}
-async function textPng(a){
- var text=a.text,w=a.w,h=a.h,fontSize=a.fontSize,color=a.color;
- var ratio=3;var can=document.createElement("canvas");can.width=Math.max(1,Math.ceil(w*ratio));can.height=Math.max(1,Math.ceil(h*ratio));
- var ctx=can.getContext("2d");ctx.scale(ratio,ratio);ctx.clearRect(0,0,w,h);
- ctx.font=textCanvasFont(a);ctx.textBaseline="alphabetic";ctx.fillStyle=stringColor(color);
- var lh=Math.max(8,fontSize*1.15),y=0,lines=esc(text).split("\n");
- var baseline=fontSize*Math.max(.65,Math.min(.95,a.ascent||.8));
- for(var k=0;k<lines.length;k++){
-  var words=lines[k].split(/(\s+)/),line="";
-  for(var j=0;j<words.length;j++){
-   if(ctx.measureText(line+words[j]).width>w-1&&line){
-    ctx.fillText(line,0,baseline+y);y+=lh;line=words[j].trimStart();
-    if(y+baseline>h)break;
-   }else line+=words[j];
-  }
-  if(y+baseline>h)break;
-  ctx.fillText(line,0,baseline+y);y+=lh;
-  if(y+baseline>h)break;
+function textPng(a){
+ // Same glyph rasterization is used in the editor AND in the exported PDF.
+ // For a PDF text run, the original bounding box may be narrower than the
+ // browser's substitute font. Fit horizontally rather than clipping the last glyph.
+ var w=Math.max(1,Number(a.w)||1),h=Math.max(1,Number(a.h)||1);
+ var size=Math.max(4,Number(a.fontSize)||10),ratio=4;
+ var can=document.createElement("canvas");
+ can.width=Math.ceil(w*ratio);can.height=Math.ceil(h*ratio);
+ var ctx=can.getContext("2d",{alpha:true});
+ ctx.setTransform(ratio,0,0,ratio,0,0);
+ ctx.clearRect(0,0,w,h);
+ ctx.fillStyle=stringColor(a.color);
+ ctx.font=textCanvasFont(a);
+ ctx.textBaseline="alphabetic";
+ var naturalLines=esc(a.text||"").split(/\r?\n/);
+ var lineHeight=Math.max(5,size*1.12),rows=[];
+ for(var n=0;n<naturalLines.length;n++){
+  var tokens=naturalLines[n].split(/(\s+)/),current="";
+  if(!tokens.length){rows.push("");continue;}
+  tokens.forEach(function(token){
+   var candidate=current+token;
+   if(current.trim()&&ctx.measureText(candidate).width>Math.max(1,w-1.5)){
+    rows.push(current.trimEnd());current=token.trimStart();
+   }else current=candidate;
+  });
+  rows.push(current);
+ }
+ var cursor=0;
+ for(var i=0;i<rows.length;i++){
+  var line=rows[i],m=ctx.measureText(line);
+  var asc=m.actualBoundingBoxAscent||size*.75;
+  var desc=m.actualBoundingBoxDescent||size*.2;
+  var baseline=cursor+Math.max(asc+.25,size*.76);
+  if(baseline+desc>h-.25)baseline=h-desc-.25;
+  if(baseline-asc<0)baseline=asc+.25;
+  if(baseline+desc>h+.15)break;
+  var naturalWidth=Math.max(1,m.width);
+  var horizontalScale=Math.min(1,Math.max(.1,(w-2)/naturalWidth));
+  ctx.save();ctx.translate(.5,0);ctx.scale(horizontalScale,1);
+  ctx.fillText(line,0,baseline);
+  ctx.restore();
+  cursor+=lineHeight;
+  if(cursor>=h)break;
  }
  return can.toDataURL("image/png");
 }
