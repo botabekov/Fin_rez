@@ -398,6 +398,10 @@ async function demo(){
  pg.drawText("Service",{x:78,y:506,size:11,font:bold});pg.drawText("Qty",{x:308,y:506,size:11,font:bold});pg.drawText("Total",{x:398,y:506,size:11,font:bold});
  pg.drawText("Analysis",{x:78,y:469,size:11,font:f});pg.drawText("2",{x:308,y:469,size:11,font:f});pg.drawText("100000",{x:398,y:469,size:11,font:f});
  pg.drawText("Testing",{x:78,y:431,size:11,font:f});pg.drawText("1",{x:308,y:431,size:11,font:f});pg.drawText("50000",{x:398,y:431,size:11,font:f});
+ var second=doc.addPage([595,842]);
+ second.drawText("SECOND PAGE - DELETE TEST",{x:70,y:760,size:18,font:bold,color:PDFLib.rgb(.11,.2,.35)});
+ second.drawText("Use the red X on this page thumbnail to remove this page.",{x:70,y:707,size:11,font:f});
+ second.drawText("Undo with Ctrl+Z. Then export to save only the remaining page.",{x:70,y:683,size:11,font:f});
  await openPDF(await doc.save(),"demo-document.pdf");
 }
 $("fileInput").addEventListener("change",function(ev){var f=ev.target.files[0];if(!f)return;if(f.size>40*1024*1024){toast("Для MVP максимальный размер файла — 40 МБ");return;}f.arrayBuffer().then(function(buf){openPDF(buf,f.name);});ev.target.value="";});
