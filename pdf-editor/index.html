@@ -18,7 +18,12 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .shell{display:flex;height:calc(100vh - 111px);min-height:440px}.sidebar{width:158px;flex:0 0 158px;background:#fff;border-right:1px solid #e3e8f0;overflow:auto;padding:18px 14px}
 .sidebar-title,.inspector-title{font-size:11px;font-weight:800;letter-spacing:1px;color:#8190a6;text-transform:uppercase;margin:0 0 14px}
 .thumbs{display:flex;flex-direction:column;gap:13px}.thumb{border:1px solid #e0e6ed;background:#fff;border-radius:10px;padding:7px;text-align:center;width:100%;color:#728097;font-size:12px}
-.thumb.active{border:2px solid #3478ec;padding:6px;background:#f1f6ff;color:#2559a8}.thumb canvas{width:100%;display:block;border:1px solid #eef1f5;background:white;max-height:140px;object-fit:contain;margin-bottom:5px}
+.thumb.active{border:2px solid #3478ec;padding:6px;background:#f1f6ff;color:#2559a8}
+.thumb-wrap{position:relative;width:100%;display:block}
+.thumb-delete{position:absolute;right:5px;top:5px;width:27px;height:27px;background:#fff;border:1px solid #e7cbd1;border-radius:8px;color:#b84258;display:grid;place-items:center;font-size:16px;line-height:1;box-shadow:0 1px 6px #0001;z-index:1}
+.thumb-delete:hover{background:#fff0f2;border-color:#d65968}
+.thumb-info{font-size:10px;color:#8d98ab;margin:8px 0 0;line-height:1.5}
+.thumb canvas{width:100%;display:block;border:1px solid #eef1f5;background:white;max-height:140px;object-fit:contain;margin-bottom:5px}
 .workspace{flex:1;overflow:auto;background:#e9edf4;position:relative;padding:20px 25px 50px;min-width:0}
 .canvas-wrap{margin:0 auto;position:relative;background:white;box-shadow:0 5px 26px #132d4b20;border-radius:2px;overflow:hidden}
 #pdfCanvas{display:block}.layer{position:absolute;inset:0;pointer-events:none;overflow:hidden}.element{position:absolute;pointer-events:auto;outline:1px solid transparent;cursor:pointer;white-space:pre-wrap;overflow:hidden}
@@ -101,18 +106,20 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 "use strict";
 if(!window.pdfjsLib||!window.PDFLib){alert("Не удалось загрузить PDF-библиотеки. Проверьте интернет-подключение.");return;}
 pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-var S={bytes:null,doc:null,name:"",numPages:0,page:1,scale:1.10,texts:[],edits:[],added:[],selected:null,undo:[],redo:[],seq:0,renderSeq:0,drag:null};
+var S={bytes:null,doc:null,name:"",numPages:0,page:1,deletedPages:[],scale:1.10,texts:[],edits:[],added:[],selected:null,undo:[],redo:[],seq:0,renderSeq:0,thumbSeq:0,drag:null};
 var $=function(id){return document.getElementById(id);};
 var esc=function(s){return String(s==null?"":s);};
 var toastTimer;
 function toast(msg){var el=$("toast");el.textContent=msg;el.style.display="block";clearTimeout(toastTimer);toastTimer=setTimeout(function(){el.style.display="none";},4200);}
 function clone(v){return JSON.parse(JSON.stringify(v));}
-function snapshot(){return JSON.stringify({edits:S.edits,added:S.added,seq:S.seq});}
+function visiblePages(){var a=[];for(var p=1;p<=S.numPages;p++){if(!S.deletedPages.includes(p))a.push(p);}return a;}
+function pageOrdinal(){return visiblePages().indexOf(S.page)+1;}
+function snapshot(){return JSON.stringify({edits:S.edits,added:S.added,deletedPages:S.deletedPages,page:S.page,seq:S.seq});}
 function record(){S.undo.push(snapshot());if(S.undo.length>50)S.undo.shift();S.redo=[];}
-function restoreState(s){var v=JSON.parse(s);S.edits=v.edits||[];S.added=v.added||[];S.seq=v.seq||0;S.selected=null;persist();renderPage();}
+function restoreState(s){var v=JSON.parse(s);S.edits=v.edits||[];S.added=v.added||[];S.deletedPages=v.deletedPages||[];S.page=v.page||1;S.seq=v.seq||0;var visible=visiblePages();if(!visible.includes(S.page))S.page=visible[0]||1;S.selected=null;persist();renderPage();renderThumbnails();}
 function undo(){if(!S.undo.length)return;S.redo.push(snapshot());restoreState(S.undo.pop());}
 function redo(){if(!S.redo.length)return;S.undo.push(snapshot());restoreState(S.redo.pop());}
-function persist(){if(!S.bytes)return;try{localStorage.setItem("pdf-editor-pro-draft",JSON.stringify({name:S.name,page:S.page,scale:S.scale,edits:S.edits,added:S.added,seq:S.seq}));$("saveStatus").textContent="Черновик сохранён локально";}catch(e){$("saveStatus").textContent="Локальное сохранение недоступно";}updateControls();}
+function persist(){if(!S.bytes)return;try{localStorage.setItem("pdf-editor-pro-draft",JSON.stringify({name:S.name,page:S.page,scale:S.scale,edits:S.edits,added:S.added,deletedPages:S.deletedPages,seq:S.seq}));$("saveStatus").textContent="Черновик сохранён локально";}catch(e){$("saveStatus").textContent="Локальное сохранение недоступно";}updateControls();}
 function getDB(){return new Promise(function(resolve,reject){var req=indexedDB.open("pdf-editor-pro",1);req.onupgradeneeded=function(){req.result.createObjectStore("files");};req.onsuccess=function(){resolve(req.result);};req.onerror=function(){reject(req.error);};});}
 async function storeBytes(bytes){try{var db=await getDB();await new Promise(function(res,rej){var t=db.transaction("files","readwrite");t.objectStore("files").put(bytes,"current");t.oncomplete=res;t.onerror=function(){rej(t.error);};});db.close();}catch(e){toast("Черновик: не удалось сохранить исходный файл");}}
 async function loadBytes(){var db=await getDB();var value=await new Promise(function(res,rej){var t=db.transaction("files","readonly");var q=t.objectStore("files").get("current");q.onsuccess=function(){res(q.result);};q.onerror=function(){rej(q.error);};});db.close();return value;}
@@ -120,8 +127,8 @@ async function openPDF(bytes,name,stored){try{
   $("saveStatus").textContent="Загрузка PDF…";var arr=new Uint8Array(bytes);
   var loading=pdfjsLib.getDocument({data:arr.slice()});
   var doc=await loading.promise;
-  S.bytes=arr;S.doc=doc;S.name=name||"document.pdf";S.page=1;S.numPages=doc.numPages;S.texts=[];S.edits=[];S.added=[];S.selected=null;S.undo=[];S.redo=[];S.seq=0;
-  if(stored){S.page=Math.max(1,Math.min(stored.page||1,S.numPages));S.scale=stored.scale||1.10;S.edits=stored.edits||[];S.added=stored.added||[];S.seq=stored.seq||0;}
+  S.bytes=arr;S.doc=doc;S.name=name||"document.pdf";S.page=1;S.numPages=doc.numPages;S.texts=[];S.edits=[];S.added=[];S.deletedPages=[];S.selected=null;S.undo=[];S.redo=[];S.seq=0;
+  if(stored){S.page=Math.max(1,Math.min(stored.page||1,S.numPages));S.scale=stored.scale||1.10;S.edits=stored.edits||[];S.added=stored.added||[];S.deletedPages=stored.deletedPages||[];S.seq=stored.seq||0;if(!visiblePages().includes(S.page))S.page=visiblePages()[0]||1;}
   $("filename").textContent=S.name;$("empty").classList.add("hidden");$("canvasWrap").classList.remove("hidden");
   if(!stored)await storeBytes(arr);
   persist();await renderPage();renderThumbnails();
@@ -129,16 +136,35 @@ async function openPDF(bytes,name,stored){try{
  }catch(e){console.error(e);$("saveStatus").textContent="Ошибка загрузки PDF";toast("Не удалось открыть PDF: "+(e.message||e));}
 }
 async function renderThumbnails(){
- var t=$("thumbs");t.innerHTML="";
- for(var p=1;p<=S.numPages;p++){
+ var serial=++S.thumbSeq, t=$("thumbs"),nums=visiblePages();
+ t.innerHTML="";
+ var info=document.createElement("p");info.className="thumb-info";info.textContent="Всего страниц: "+nums.length+(S.deletedPages.length?" · удалено: "+S.deletedPages.length:"");
+ t.appendChild(info);
+ for(var j=0;j<nums.length;j++){
+  if(serial!==S.thumbSeq)return;
+  var p=nums[j],wrap=document.createElement("div");wrap.className="thumb-wrap";
   var b=document.createElement("button");b.className="thumb"+(p===S.page?" active":"");b.setAttribute("data-page",p);
+  b.title="Открыть страницу "+(j+1);
   var c=document.createElement("canvas");c.width=90;c.height=125;b.appendChild(c);
-  var label=document.createElement("span");label.textContent="Страница "+p;b.appendChild(label);
+  var label=document.createElement("span");label.textContent="Страница "+(j+1);b.appendChild(label);
   b.onclick=(function(n){return function(){S.page=n;S.selected=null;persist();renderPage();highlightThumb();};})(p);
-  t.appendChild(b);
-  if(p<=35){try{var pg=await S.doc.getPage(p);var vp=pg.getViewport({scale:.16});c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);await pg.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;}catch(e){}}
+  wrap.appendChild(b);
+  var del=document.createElement("button");del.className="thumb-delete";del.type="button";del.title="Удалить страницу "+(j+1);del.setAttribute("aria-label","Удалить страницу "+(j+1));del.textContent="×";
+  del.onclick=(function(n){return function(ev){ev.stopPropagation();deletePage(n);};})(p);
+  wrap.appendChild(del);t.appendChild(wrap);
+  if(j<35){try{var pg=await S.doc.getPage(p);if(serial!==S.thumbSeq)return;var vp=pg.getViewport({scale:.16});c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);await pg.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;}catch(e){}}
  }
  highlightThumb();
+}
+function deletePage(p){
+ if(!S.doc||S.deletedPages.includes(p))return;
+ var old=visiblePages(),index=old.indexOf(p);
+ if(old.length<=1){toast("Нельзя удалить последнюю страницу документа");return;}
+ if(!window.confirm("Удалить страницу "+(index+1)+" из "+old.length+"? Действие можно отменить через Ctrl+Z."))return;
+ record();S.deletedPages.push(p);S.deletedPages.sort(function(a,b){return a-b;});
+ if(S.page===p){var newer=visiblePages();S.page=newer[Math.min(index,newer.length-1)];}
+ S.selected=null;persist();renderPage();renderThumbnails();
+ toast("Страница удалена · Отменить: Ctrl+Z");
 }
 function highlightThumb(){document.querySelectorAll(".thumb").forEach(function(b){b.classList.toggle("active",+b.dataset.page===S.page);});}
 function findEdit(index){return S.edits.find(function(x){return x.page===S.page&&x.index===index;});}
@@ -198,8 +224,8 @@ async function renderPage(){
  });
  S.added.filter(function(a){return a.page===S.page;}).forEach(function(a){drawAdded(layer,a);});
  layer.onclick=function(ev){if(ev.target===layer){S.selected=null;syncSelected();}};
- $("pageCounter").textContent=S.page+" / "+S.numPages;$("zoomLabel").textContent=Math.round(S.scale*100)+"%";
- $("footerState").textContent=S.numPages+" стр. · "+S.edits.length+" замен · "+S.added.length+" новых объектов";
+ $("pageCounter").textContent=pageOrdinal()+" / "+visiblePages().length;$("zoomLabel").textContent=Math.round(S.scale*100)+"%";
+ $("footerState").textContent=visiblePages().length+" стр. · "+S.edits.length+" замен · "+S.added.length+" новых объектов";
  syncSelected();updateControls();highlightThumb();
 }
 function textFontFamily(o){
@@ -298,7 +324,7 @@ function addObject(kind){
 }
 function updateControls(){var ready=!!S.doc;
  ["exportBtn","textBtn","tableBtn","prevBtn","nextBtn","zoomOut","zoomIn"].forEach(function(id){$(id).disabled=!ready;});
- $("prevBtn").disabled=!ready||S.page<=1;$("nextBtn").disabled=!ready||S.page>=S.numPages;
+ $("prevBtn").disabled=!ready||pageOrdinal()<=1;$("nextBtn").disabled=!ready||pageOrdinal()>=visiblePages().length;
  $("undoBtn").disabled=!S.undo.length;$("redoBtn").disabled=!S.redo.length;
 }
 function stringColor(hex){hex=hex||"#20324b";return hex;}
@@ -349,9 +375,14 @@ async function exportPDF(){
    var png=await (a.type==="table"?tablePng(a):textPng(a));
    var embedded=await doc.embedPng(png);pg.drawImage(embedded,{x:x,y:y,width:w,height:h});
   }
-  var result=await doc.save();var blob=new Blob([result],{type:"application/pdf"});var url=URL.createObjectURL(blob);
+  var excluded=S.deletedPages.slice().sort(function(a,b){return b-a;});
+  excluded.forEach(function(originalPage){doc.removePage(originalPage-1);});
+  var result=await doc.save();
+  var verified=await PDFLib.PDFDocument.load(result);
+  if(verified.getPageCount()!==visiblePages().length)throw new Error("Экспорт: количество страниц не совпало");
+  var blob=new Blob([result],{type:"application/pdf"});var url=URL.createObjectURL(blob);
   var link=document.createElement("a");link.href=url;link.download=S.name.replace(/\.pdf$/i,"")+"-edited.pdf";document.body.appendChild(link);link.click();link.remove();setTimeout(function(){URL.revokeObjectURL(url);},60000);
-  toast("PDF сформирован. Важно: замещённый оригинальный текст может остаться внутри файла.");
+  toast("PDF скачан: "+visiblePages().length+" стр. Изменение исходного текста пока визуальное.");
  }catch(e){console.error(e);toast("Ошибка экспорта: "+(e.message||e));}
  finally{$("saveStatus").textContent="Черновик сохранён локально";updateControls();}
 }
@@ -374,8 +405,8 @@ $("fileInput").addEventListener("change",function(ev){var f=ev.target.files[0];i
 $("demoBtn").onclick=demo;
 $("restoreBtn").onclick=async function(){try{var s=JSON.parse(localStorage.getItem("pdf-editor-pro-draft")||"null"),b=await loadBytes();if(!b||!s){toast("Локальный черновик не найден");return;}await openPDF(b,s.name,s);}catch(e){toast("Не удалось восстановить черновик");}};
 $("exportBtn").onclick=exportPDF;$("textBtn").onclick=function(){addObject("text");};$("tableBtn").onclick=function(){addObject("table");};
-$("prevBtn").onclick=function(){if(S.page>1){S.page--;S.selected=null;persist();renderPage();}};
-$("nextBtn").onclick=function(){if(S.page<S.numPages){S.page++;S.selected=null;persist();renderPage();}};
+$("prevBtn").onclick=function(){var a=visiblePages(),i=a.indexOf(S.page);if(i>0){S.page=a[i-1];S.selected=null;persist();renderPage();}};
+$("nextBtn").onclick=function(){var a=visiblePages(),i=a.indexOf(S.page);if(i>=0&&i<a.length-1){S.page=a[i+1];S.selected=null;persist();renderPage();}};
 $("zoomIn").onclick=function(){S.scale=Math.min(2.6,Math.round((S.scale+.1)*10)/10);persist();renderPage();};
 $("zoomOut").onclick=function(){S.scale=Math.max(.5,Math.round((S.scale-.1)*10)/10);persist();renderPage();};
 $("undoBtn").onclick=undo;$("redoBtn").onclick=redo;
