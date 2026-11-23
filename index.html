@@ -979,7 +979,6 @@
           <button class="btn" id="repo-empty-btn" type="button">Операций не было</button>
         </div>
         <div class="table-wrapper" style="border:none; box-shadow:none;">
-          <p id="repo-empty-status" role="status" hidden>Форма РЕПО добавлена. Операций нет.</p>
           <table id="repo-table" class="data-table"></table>
         </div>
       </div>
@@ -2337,14 +2336,15 @@ window.addEventListener('keydown', (e) => {
         }
 
         function applyYearFilterToDividendsAndRepo() {
-          document.getElementById('repo-empty-status').hidden = repoDataFull?.length !== 1;
           if (dividendsDataFull && dividendsTable) {
             dividendsData = filterSimpleTableByDateRange(dividendsDataFull, 'ДАТА ТРАНЗАКЦИИ');
             renderSimpleTable(dividendsTable, dividendsData);
           }
           if (repoDataFull && repoTable) {
             repoData = filterSimpleTableByDateRange(repoDataFull, 'ДАТА ТРАНЗАКЦИИ');
-            renderSimpleTable(repoTable, repoData);
+            renderSimpleTable(repoTable, repoData, {
+              emptyMessage: repoDataFull.length === 1 ? 'Операций РЕПО нет' : 'За выбранный период операций РЕПО нет'
+            });
           }
         }
 
@@ -2394,7 +2394,7 @@ window.addEventListener('keydown', (e) => {
 
           const visibleCols = [];
           for (let col = 0; col < headerRow.length; col++) {
-            let hasData = false;
+            let hasData = rowCount === 1 && options.emptyMessage && String(headerRow[col] ?? '').trim() !== '';
             for (let r = 1; r < rowCount; r++) {
               const val = dataTable[r][col];
               if (val !== undefined && String(val).trim() !== '') {
@@ -2436,6 +2436,18 @@ window.addEventListener('keydown', (e) => {
               tr.appendChild(td);
             });
             tbody.appendChild(tr);
+          }
+
+          if (rowCount === 1 && options.emptyMessage) {
+            const row = document.createElement('tr');
+            const cell = document.createElement('td');
+            cell.colSpan = visibleCols.length;
+            cell.textContent = options.emptyMessage;
+            cell.style.textAlign = 'center';
+            cell.style.color = 'var(--text-secondary)';
+            cell.style.padding = '16px';
+            row.appendChild(cell);
+            tbody.appendChild(row);
           }
 
           tableEl.appendChild(thead);
@@ -3516,7 +3528,6 @@ function attachLongPressEdit(table){
           cbAsOfDate             = '';
           dividendsDataFull      = null;
           repoDataFull           = null;
-          document.getElementById('repo-empty-status').hidden = true;
           editedCells            = new Map();
 
           dividendsSelectedFile = null;
