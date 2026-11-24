@@ -787,6 +787,18 @@
   }
 }
 
+
+    #table-container .table-wrapper { min-width: 0; max-width: 100%; }
+    #table-container table.data-table { width: 100%; table-layout: fixed; }
+    #table-container table.data-table :is(th, td) {
+      min-width: 0;
+      padding-inline: clamp(1px, .18vw, 4px);
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    #table-container table.data-table th:first-child { width: 2.4%; }
+    #table-container table.data-table th.movement-identifier { width: 6%; }
+    #table-container table.data-table th.fifo-average-col { width: 6%; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
