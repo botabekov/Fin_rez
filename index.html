@@ -803,7 +803,7 @@
     #table-container table.data-table th { font-size: 10px; line-height: 1.2; padding-block: 5px; }
     #table-container table.data-table th:first-child { width: 1.7%; }
     #table-container table.data-table th.movement-short { width: 3%; }
-    #table-container table.data-table th.movement-date { width: 4.5%; }
+    #table-container table.data-table th.movement-date { width: calc(10ch + 12px); }
     #table-container table.data-table th.movement-price { width: 6.6%; }
     #table-container table.data-table td { padding-block: 4px; }
     #table-container table.data-table td:is(.movement-date,.movement-number,.movement-identifier) {
@@ -2606,7 +2606,7 @@ window.addEventListener('keydown', (e) => {
             const priceAcquireIndex  = findIndexCI('ЦЕНА ПРИОБРЕТЕНИЯ ОДНОЙ ЦБ');
             let   priceIndex         = findIndexCI('ЦЕНА');
             const coeffIndex         = findIndexCI('КОЭФФИЦИЕНТ КОНВЕРТАЦИИ');
-            const dateTradeIndex     = findIndexCI('ДАТА ТОРГОВОЙ ОПЕРАЦИИ');
+            const dateTradeIndex     = header.findIndex(value => normalizeKey(value) === 'ДАТА ТОРГОВОЙ ОПЕРАЦИИ');
             const qtyIndex           = findIndexCI('КОЛИЧЕСТВО ЦБ');
             const marketIndex        = findIndexCI('РЫНОК ЦБ');
 
@@ -2929,7 +2929,7 @@ window.addEventListener('keydown', (e) => {
           }
 
           function styleMovementCell(cell, index) {
-            if (index === colDateIndex) cell.classList.add('movement-date');
+            if (index === colDateIndex || normalizeKey(header[index]) === 'ДАТА ТОРГОВОЙ ОПЕРАЦИИ') cell.classList.add('movement-date');
             if (index === colCountryIndex || index === colCurrencyIndex || index === colMarketIndex) cell.classList.add('movement-short');
             if (index === priceColIndex) cell.classList.add('movement-price');
             if (/комисси/i.test(header[index])) cell.classList.add('movement-number');
@@ -3141,6 +3141,7 @@ window.addEventListener('keydown', (e) => {
               
               if (colIndex === colIsinIndex) td.classList.add('cell-isin');
               styleMovementCell(td, colIndex);
+              if (/^\d{2}\.\d{2}\.\d{4}$/.test(String(cell).trim())) td.classList.add('movement-date');
               if (isCalcCol(colIndex))       td.classList.add('calc-col');
               if (colIndex === avgCostColIndex) td.classList.add('fifo-average-col');
               
