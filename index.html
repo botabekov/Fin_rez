@@ -799,6 +799,19 @@
     #table-container table.data-table th:first-child { width: 2.4%; }
     #table-container table.data-table th.movement-identifier { width: 6%; }
     #table-container table.data-table th.fifo-average-col { width: 6%; }
+    #table-container table.data-table { font-size: clamp(10px, .62vw, 11px); line-height: 1.3; }
+    #table-container table.data-table th { font-size: 10px; line-height: 1.2; padding-block: 5px; }
+    #table-container table.data-table th:first-child { width: 1.7%; }
+    #table-container table.data-table th.movement-short { width: 3%; }
+    #table-container table.data-table th.movement-date { width: 4.5%; }
+    #table-container table.data-table th.movement-price { width: 6.6%; }
+    #table-container table.data-table td { padding-block: 4px; }
+    #table-container table.data-table td:is(.movement-date,.movement-number,.movement-identifier) {
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums;
+    }
+    #table-container table.data-table td.movement-number { text-align: right; }
+    #table-container table.data-table td:is(.movement-date,.movement-short) { text-align: center; }
+    #table-container table.data-table td[contenteditable="true"] { white-space: normal; overflow-wrap: anywhere; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -2916,6 +2929,10 @@ window.addEventListener('keydown', (e) => {
           }
 
           function styleMovementCell(cell, index) {
+            if (index === colDateIndex) cell.classList.add('movement-date');
+            if (index === colCountryIndex || index === colCurrencyIndex || index === colMarketIndex) cell.classList.add('movement-short');
+            if (index === priceColIndex) cell.classList.add('movement-price');
+            if (/комисси/i.test(header[index])) cell.classList.add('movement-number');
             if (index === colNameIndex || index === colDirectionIndex || index === colTransferFromIndex || index === colTransferToIndex) {
               cell.classList.add('movement-description');
             }
@@ -3020,7 +3037,15 @@ window.addEventListener('keydown', (e) => {
                 if (colIndex === profitKztColIndex) return;
 
                 const th = document.createElement('th');
-                th.textContent = h;
+                const shortHeaders = {
+                  [colDateIndex]: 'Дата сделки', [colCountryIndex]: 'Страна', [colCurrencyIndex]: 'Валюта',
+                  [colDirectionIndex]: 'Операция', [qtyColIndex]: 'Кол-во ЦБ',
+                  [coeffColIndex]: 'Коэф. конв.', [balanceCostColIndex]: 'Стоимость остатка',
+                  [avgCostColIndex]: 'Средняя цена FIFO'
+                };
+                th.textContent = shortHeaders[colIndex] || h;
+                th.title = h;
+                th.setAttribute('aria-label', h);
                 styleMovementCell(th, colIndex);
                 if (isCalcCol(colIndex)) th.classList.add('calc-col');
                 if (colIndex === avgCostColIndex) th.classList.add('fifo-average-col');
@@ -3175,6 +3200,9 @@ window.addEventListener('keydown', (e) => {
                 }
               }
 
+              if (td.textContent && td.matches('.movement-number, .movement-date, .movement-identifier')) {
+                td.title = [td.textContent, td.title].filter(Boolean).join(' · ');
+              }
               tr.appendChild(td);
             });
             tbody.appendChild(tr);
