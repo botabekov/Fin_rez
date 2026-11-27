@@ -636,6 +636,33 @@
     .simple-table-container {
       width: 100%; height: 100%; overflow: auto; padding: 16px;
     }
+    .simple-table-container .table-wrapper { max-width: 100%; overflow-x: auto; }
+    .simple-table-container .data-table {
+      width: 100%;
+      table-layout: auto;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .simple-table-container .data-table :is(th, td) {
+      padding: 9px 7px;
+      line-height: 1.45;
+      vertical-align: middle;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      border-color: var(--border);
+    }
+    .simple-table-container .data-table th {
+      font-size: 11.5px;
+      background: var(--tone-f4f7fb, #f4f7fb);
+      color: var(--text-main);
+    }
+    .simple-table-container .data-table .report-description { min-width: 14ch; }
+    .simple-table-container .data-table td.report-description { text-align: left; }
+    .simple-table-container .data-table td.report-number {
+      white-space: nowrap;
+      text-align: right;
+    }
+    .simple-table-container .data-table td.report-code { white-space: nowrap; }
     .sub-upload-panel {
       background: var(--bg-surface);
       padding: 12px;
@@ -2530,9 +2557,18 @@ window.addEventListener('keydown', (e) => {
             thead.appendChild(infoTr);
           }
 
+          const cellClasses = headerRow.map(value => {
+            const label = String(value ?? '').trim().toLowerCase().replace(/ё/g, 'е');
+            if (/^(количество|кол-во|сумма|объем|комисси|стоимость|цена|вознаграждение|ставка|доход)/.test(label)) return 'report-number';
+            if (/^(isin|дата|номер заказа)/.test(label)) return 'report-code';
+            if (/^(наименование|инструмент|тип|операция|адрес)/.test(label)) return 'report-description';
+            return '';
+          });
+
           const headTr = document.createElement('tr');
           visibleCols.forEach(colIndex => {
             const th = document.createElement('th');
+            th.className = cellClasses[colIndex];
             th.textContent = headerRow[colIndex];
             headTr.appendChild(th);
           });
@@ -2543,6 +2579,7 @@ window.addEventListener('keydown', (e) => {
             const tr = document.createElement('tr');
             visibleCols.forEach(colIndex => {
               const td = document.createElement('td');
+              td.className = cellClasses[colIndex];
               const val = dataTable[i][colIndex];
               td.textContent = (val === undefined || val === null) ? '' : val;
               tr.appendChild(td);
