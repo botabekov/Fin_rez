@@ -329,12 +329,33 @@
       font-weight: 600;
     }
 
+    #portfolio-rows .portfolio-isin-button {
+      border-color: transparent;
+      background: transparent;
+      color: inherit;
+      font-weight: inherit;
+    }
+
+    #portfolio-rows .portfolio-isin-button:hover {
+      text-decoration: underline;
+    }
+
     #portfolio-table-wrapper {
       flex: none;
       overflow-x: auto;
     }
 
     #tab-fi > .fi-layout { flex: 1; min-height: 0; }
+
+    #position-payments h2 {
+      margin: 0 0 8px;
+      font-size: 14px;
+    }
+
+    #position-movements-empty, #position-payments-status {
+      margin: 0 0 12px;
+      color: var(--text-secondary);
+    }
 
     .nav-panel {
       width: 220px;
@@ -463,16 +484,16 @@
     }
 
     @media (min-width: 1280px) {
-      #position-detail:not([hidden]) + .instrument-detail-layout .data-table {
+      #position-detail:not([hidden]) + .instrument-detail-layout #tables-wrapper .data-table {
         table-layout: fixed;
       }
 
-      #position-detail:not([hidden]) + .instrument-detail-layout .data-table th:nth-child(3),
-      #position-detail:not([hidden]) + .instrument-detail-layout .data-table td:nth-child(3) {
+      #position-detail:not([hidden]) + .instrument-detail-layout #tables-wrapper .data-table th:nth-child(3),
+      #position-detail:not([hidden]) + .instrument-detail-layout #tables-wrapper .data-table td:nth-child(3) {
         min-width: 0;
       }
 
-      #position-detail:not([hidden]) + .instrument-detail-layout .data-table th:first-child {
+      #position-detail:not([hidden]) + .instrument-detail-layout #tables-wrapper .data-table th:first-child {
         width: 30px;
       }
 
@@ -1056,6 +1077,14 @@
           <div class="content-placeholder" id="placeholder">
             <div>Загрузите файл или выберите источник данных</div>
           </div>
+          <p id="position-movements-empty" hidden>Движения по этой позиции не сопоставлены.</p>
+          <section id="position-payments" aria-labelledby="position-payments-title" hidden>
+            <h2 id="position-payments-title">Дивиденды и купоны по ISIN</h2>
+            <p id="position-payments-status" role="status" hidden></p>
+            <div class="table-wrapper" id="position-payments-wrapper" hidden>
+              <table class="data-table" id="position-payments-table" aria-labelledby="position-payments-title"></table>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -1390,8 +1419,7 @@ window.addEventListener('keydown', (e) => {
         function loadReportSnapshot(saved) {
             if (!validReportSnapshot(saved)) throw new Error('Некорректная копия отчёта.');
             reportGeneration++;
-            selectedPosition = null;
-            positionDetail.hidden = true;
+            hidePositionDetail();
             selectedFile = null;
             currentEditingCell = null;
             fileInput.value = '';
@@ -1490,7 +1518,50 @@ window.addEventListener('keydown', (e) => {
         const portfolioStatus = document.getElementById('portfolio-status');
         const portfolioTable = document.getElementById('portfolio-table-wrapper');
         const positionDetail = document.getElementById('position-detail');
+        const positionMovementsEmpty = document.getElementById('position-movements-empty');
+        const positionPayments = document.getElementById('position-payments');
+        const positionPaymentsStatus = document.getElementById('position-payments-status');
+        const positionPaymentsWrapper = document.getElementById('position-payments-wrapper');
+        const positionPaymentsTable = document.getElementById('position-payments-table');
         let selectedPosition = null;
+
+        function renderPositionPayments() {
+          positionPayments.hidden = selectedPosition === null;
+          positionPaymentsStatus.hidden = true;
+          positionPaymentsWrapper.hidden = true;
+          positionPaymentsTable.replaceChildren();
+          if (selectedPosition === null) return;
+
+          const isin = normalizeKey(selectedPosition.isin);
+          const [header, ...rows] = dividendsDataFull ?? [];
+          const isinIndex = header?.findIndex(value => ['ISIN ЦБ', 'ISIN'].includes(normalizeKey(value))) ?? -1;
+          let message;
+          if (!isin) {
+            message = 'У позиции не указан ISIN.';
+          } else if (!header) {
+            message = 'Загрузите отчёт о выплатах в разделе «Дивиденды».';
+          } else if (isinIndex < 0) {
+            message = 'В отчёте о выплатах отсутствует колонка ISIN.';
+          } else {
+            const payments = rows.filter(row => normalizeKey(row[isinIndex]) === isin);
+            if (payments.length) {
+              renderSimpleTable(positionPaymentsTable, [header, ...payments]);
+              positionPaymentsWrapper.hidden = false;
+              return;
+            }
+            message = 'В загруженном отчёте выплат по этому ISIN нет.';
+          }
+
+          positionPaymentsStatus.textContent = message;
+          positionPaymentsStatus.hidden = false;
+        }
+
+        function hidePositionDetail() {
+          selectedPosition = null;
+          positionDetail.hidden = true;
+          positionMovementsEmpty.hidden = true;
+          renderPositionPayments();
+        }
 
         function portfolioKey(row) {
           const isin = String(row[colIsinIndex] ?? '').trim();
@@ -1646,18 +1717,29 @@ window.addEventListener('keydown', (e) => {
             button.type = 'button';
             button.className = 'btn';
             button.textContent = position.name;
-            button.disabled = position.rows.length === 0;
-            button.title = button.disabled ? 'Движения не сопоставлены' : 'Посмотреть историю движений';
-            button.addEventListener('click', () => {
+            button.disabled = !position.rows.length && !position.isin;
+            button.title = 'Посмотреть движения и выплаты';
+            const openPosition = () => {
               selectedPosition = position;
-              document.getElementById('position-detail-title').textContent = position.name + ' · ' + position.isin + ' · Все движения из файла';
+              document.getElementById('position-detail-title').textContent =
+                [position.name, position.isin, 'Все движения и выплаты из файла'].filter(Boolean).join(' · ');
               positionDetail.hidden = false;
+              positionMovementsEmpty.hidden = position.rows.length > 0;
+              renderPositionPayments();
               applyYearFilter();
               switchTab('fi');
-            });
+              tableContainer.scrollTop = 0;
+            };
+            button.addEventListener('click', openPosition);
             tr.insertCell().appendChild(button);
             const isinCell = tr.insertCell();
-            isinCell.textContent = position.isin;
+            if (position.isin) {
+              const isinButton = button.cloneNode(false);
+              isinButton.classList.add('portfolio-isin-button');
+              isinButton.textContent = position.isin;
+              isinButton.addEventListener('click', openPosition);
+              isinCell.appendChild(isinButton);
+            }
             const isinCount = isinCounts.get(position.isin.toUpperCase());
             if (isinCount > 1) {
               isinCell.classList.add('duplicate-isin');
@@ -1689,8 +1771,7 @@ window.addEventListener('keydown', (e) => {
 
         function clearPositionDetail() {
           if (selectedPosition === null) return;
-          selectedPosition = null;
-          positionDetail.hidden = true;
+          hidePositionDetail();
           applyYearFilter();
         }
 
@@ -2378,7 +2459,7 @@ window.addEventListener('keydown', (e) => {
         }
 
         function applyYearFilter() {
-          if (!fullData || fullData.length <= 1) return;
+          if (!fullData) return;
           if (colPriceIndex == null || colIsinIndex == null || colQtyIndex == null) return;
 
           const header  = fullData[0];
@@ -2453,6 +2534,7 @@ window.addEventListener('keydown', (e) => {
             dividendsData = filterSimpleTableByDateRange(dividendsDataFull, 'ДАТА ТРАНЗАКЦИИ');
             renderSimpleTable(dividendsTable, dividendsData);
           }
+          if (selectedPosition !== null) renderPositionPayments();
           if (repoDataFull && repoTable) {
             repoData = filterSimpleTableByDateRange(repoDataFull, 'ДАТА ТРАНЗАКЦИИ');
             renderSimpleTable(repoTable, repoData, {
@@ -2767,8 +2849,7 @@ window.addEventListener('keydown', (e) => {
                 return row;
               });
 
-            selectedPosition = null;
-            positionDetail.hidden = true;
+            hidePositionDetail();
             reportChanges = [];
             fullData = [header, ...dataRowsFi];
             lastData = fullData;
@@ -2950,7 +3031,7 @@ window.addEventListener('keydown', (e) => {
         ) {
           if (!data || data.length <= 1) {
             clearTables();
-            if (placeholder) placeholder.style.display = 'flex';
+            if (placeholder) placeholder.style.display = selectedPosition === null ? 'flex' : 'none';
             return;
           }
 
@@ -3699,8 +3780,7 @@ function attachLongPressEdit(table){
           tabBtnDividends.disabled = true;
           tabBtnRepo.disabled      = true;
           tabBtnCb.disabled        = true;
-          selectedPosition = null;
-          positionDetail.hidden = true;
+          hidePositionDetail();
           switchTab('portfolio');
 
           hideWarning();
