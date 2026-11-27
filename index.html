@@ -4324,7 +4324,7 @@ function attachLongPressEdit(table){
           };
           const reportDataJson = JSON.stringify(reportPayload).replace(/</g, '\\u003c');
 
-          function buildTableHtml(headers, rows) {
+          function buildTableHtml(headers, rows, profitColumn = -1) {
             let html = '<div class="table-wrapper"><table class="data-table"><thead><tr>';
             headers.forEach(h => { html += '<th>' + escapeHtml(h) + '</th>'; });
             html += '</tr></thead><tbody>';
@@ -4333,7 +4333,16 @@ function attachLongPressEdit(table){
             } else {
               rows.forEach(r => {
                 html += '<tr>';
-                r.forEach(cell => { html += '<td>' + escapeHtml(cell) + '</td>'; });
+                r.forEach((cell, index) => {
+                  let cellClass = '';
+                  if (index === profitColumn) {
+                    const amount = parseNumber(cell);
+                    if (Number.isFinite(amount) && amount !== 0) {
+                      cellClass = amount < 0 ? ' class="profit-negative"' : ' class="profit-positive"';
+                    }
+                  }
+                  html += '<td' + cellClass + '>' + escapeHtml(cell) + '</td>';
+                });
                 html += '</tr>';
               });
             }
@@ -4400,6 +4409,8 @@ function attachLongPressEdit(table){
       border: 1px solid #cbd5e1; padding: 5px; text-align: center; vertical-align: middle;
     }
     .data-table th { background: #f1f5f9; font-weight: 600; color: #475569; }
+    .data-table td.profit-negative { background: #fee2e2; color: #991b1b; font-weight: 600; }
+    .data-table td.profit-positive { background: #dcfce7; color: #166534; font-weight: 600; }
 
     .summary-block { background: #fff; border: 1px solid #cbd5e1; padding: 10px; margin-bottom: 20px; page-break-inside: avoid; }
     .summary-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; text-align: center; }
@@ -4489,7 +4500,7 @@ function attachLongPressEdit(table){
 
     <div class="section">
       <div class="section-title">1. Доход от прироста стоимости активов</div>
-      ${buildTableHtml(headersSales, salesRows)}
+      ${buildTableHtml(headersSales, salesRows, headersSales.indexOf('Прибыль / Убыток'))}
     </div>
 
     <div class="section">
