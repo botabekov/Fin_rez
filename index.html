@@ -828,6 +828,13 @@
     #table-container table.data-table td.movement-number { text-align: right; }
     #table-container table.data-table td:is(.movement-date, .movement-short) { text-align: center; }
 
+    #table-container .data-table tfoot th { text-align: right; }
+    #table-container .data-table tfoot :is(th, td) { border-top: 2px solid var(--border); font-weight: 700; }
+    #table-container .data-table td.movement-loss { background: #fee2e2; color: #861d24; }
+    #table-container .data-table td.movement-gain { background: #dcfce7; color: #14532d; }
+    :root[data-theme="dark"] #table-container td.movement-loss { background: #54292d; color: #ffc6c9; }
+    :root[data-theme="dark"] #table-container td.movement-gain { background: #194033; color: #baf2d1; }
+
     /* Compact desktop view keeps the instrument index alongside the full history. */
     @media (min-width: 1025px) {
       .instrument-detail-layout .nav-panel { width: clamp(132px, 8.5vw, 160px); }
@@ -3081,8 +3088,40 @@ window.addEventListener('keydown', (e) => {
                    idx === profitKztColIndex; 
           }
 
+          const profitTotals = new Map();
+
+          function profitTone(value) {
+            return value < 0 ? 'movement-loss' : 'movement-gain';
+          }
+
           function finalizeGroup() {
             if (!table) return;
+            if (profitTotals.size) {
+              const foot = document.createElement('tfoot');
+              const beforeProfit = profitColIndex - (profitKztColIndex >= 0 && profitKztColIndex < profitColIndex ? 1 : 0);
+              const afterProfit = header.length - beforeProfit - 1 - (profitKztColIndex >= 0 ? 1 : 0);
+              for (const [currency, cents] of profitTotals) {
+                const line = document.createElement('tr');
+                const caption = document.createElement('th');
+                caption.scope = 'row';
+                caption.colSpan = beforeProfit;
+                caption.textContent = currency ? 'Итого · ' + currency : 'Итого · валюта не указана';
+                line.appendChild(caption);
+                const amount = document.createElement('td');
+                amount.classList.add('movement-number');
+                amount.textContent = currency ? formatNumberComma(cents / 100) : '—';
+                if (currency) amount.classList.add(profitTone(cents));
+                line.appendChild(amount);
+                if (afterProfit > 0) {
+                  const rest = document.createElement('td');
+                  rest.colSpan = afterProfit;
+                  line.appendChild(rest);
+                }
+                foot.appendChild(line);
+              }
+              table.appendChild(foot);
+              profitTotals.clear();
+            }
             const hasMissingArrival =
               missingArrivalKeys && missingArrivalKeys.has(currentKey);
 
@@ -3265,6 +3304,12 @@ window.addEventListener('keydown', (e) => {
               
               if (colIndex === colIsinIndex) td.classList.add('cell-isin');
               styleMovementCell(td, colIndex);
+              if (colIndex === profitColIndex && profitForRow !== '') {
+                const cents = Math.round(parseNumber(profitForRow) * 100);
+                const currency = String(row[colCurrencyIndex] ?? '').trim().toUpperCase();
+                profitTotals.set(currency, (profitTotals.get(currency) || 0) + cents);
+                td.classList.add(profitTone(cents));
+              }
               if (/^\d{2}\.\d{2}\.\d{4}$/.test(String(cell).trim())) td.classList.add('movement-date');
               if (isCalcCol(colIndex))       td.classList.add('calc-col');
               if (colIndex === avgCostColIndex) td.classList.add('fifo-average-col');
