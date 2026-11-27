@@ -913,6 +913,7 @@
     @media (prefers-reduced-motion:reduce) { #theme-switch::before { transition:none; } }
 </style>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="./fin-rez-excel.js" defer></script>
 <script>(() => {
   const preference = matchMedia('(prefers-color-scheme: dark)');
   const key = 'fin-rez:theme';
@@ -4007,7 +4008,17 @@ function attachLongPressEdit(table){
           }
         });
 
-        exportBtn.addEventListener('click', () => exportReportWorkbook(false));
+        exportBtn.addEventListener('click', async () => {
+          exportBtn.disabled = true;
+          try {
+            await exportReportWorkbook(false);
+          } catch (error) {
+            console.error(error);
+            alert('Не удалось сформировать оформленный Excel. Попробуйте ещё раз.');
+          } finally {
+            updateButtonsState();
+          }
+        });
         function exportReportWorkbook(full, period = []) {
   const movement = full ? fullData : lastData;
   const hasFi = movement && movement.length > (full ? 0 : 1);
@@ -4018,6 +4029,49 @@ function attachLongPressEdit(table){
   if (!hasFi && !hasDiv && !hasRepo && !hasCb) {
     alert('Нет данных для выгрузки.');
     return;
+  }
+
+  const fio = (metaFio && metaFio.value) ? metaFio.value.trim() : '';
+  const acc = (metaAccount && metaAccount.value) ? metaAccount.value.trim() : '';
+  const asOf = (metaAsOf && metaAsOf.value) ? metaAsOf.value.trim() : '';
+  const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g, '').trim();
+  const fileNameParts = ['Финрез'];
+  if (fio) fileNameParts.push(safe(fio));
+  if (acc) fileNameParts.push(safe(acc));
+  if (asOf) fileNameParts.push(safe(asOf));
+  if (full) fileNameParts.push(...period);
+  const fileName = fileNameParts.join(' - ') + '.xlsx';
+
+  if (!full) {
+    const selectedPeriod = yearFilter.value;
+    const showDate = value => value.split('-').reverse().join('.');
+    let periodLabel = 'за все доступные годы';
+    if (selectedPosition) periodLabel = 'история выбранного инструмента';
+    else if (selectedPeriod === 'portfolio') periodLabel = 'движение по открытым позициям';
+    else if (/^\d{4}$/.test(selectedPeriod)) periodLabel = 'за ' + selectedPeriod + ' год';
+    else if (selectedPeriod === 'custom') {
+      const start = dateFromInput.value;
+      const end = dateToInput.value;
+      periodLabel = [start && 'с ' + showDate(start), end && 'по ' + showDate(end)].filter(Boolean).join(' ') || periodLabel;
+    }
+    const copyRows = rows => rows.map(row => row.slice());
+    return window.downloadFormattedFinRez({
+      movement: hasFi ? copyRows(movement) : null,
+      dividends: hasDiv ? copyRows(dividendsDataFull) : null,
+      repo: hasRepo ? copyRows(repoDataFull) : null,
+      balances: hasCb ? copyRows(cbData) : null,
+      balanceDate: cbAsOfDate,
+      asOf,
+      periodLabel,
+      tickerFromName: extractTickerFromName,
+      movementColumns: {
+        isin: colIsinIndex,
+        name: colNameIndex,
+        currency: colCurrencyIndex,
+        profit: colProfitIndex,
+        profitKzt: colProfitKztIndex
+      }
+    }, fileName);
   }
 
   const wb = XLSX.utils.book_new();
@@ -4043,31 +4097,14 @@ function attachLongPressEdit(table){
   // 4) Остатки ЦБ
   if (hasCb) {
     let aoaCb = cbData;
-    if (cbAsOfDate && full) {
+    if (cbAsOfDate) {
       aoaCb = [['По состоянию на', cbAsOfDate], ...cbData];
-    } else if (cbAsOfDate) {
-      const cols = (cbData[0] || []).length || 1;
-      const infoRow = new Array(cols).fill('');
-      infoRow[0] = 'По состоянию на: ' + cbAsOfDate;
-      aoaCb = [infoRow, ...cbData];
     }
     const wsCb = XLSX.utils.aoa_to_sheet(aoaCb);
     XLSX.utils.book_append_sheet(wb, wsCb, 'Остатки ЦБ');
   }
 
-  // Имя файла покрасивее
-  const fio = (metaFio && metaFio.value) ? metaFio.value.trim() : '';
-  const acc = (metaAccount && metaAccount.value) ? metaAccount.value.trim() : '';
-  const asOf = (metaAsOf && metaAsOf.value) ? metaAsOf.value.trim() : '';
-  const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g, '').trim();
-
-  const fileNameParts = ['Финрез'];
-  if (fio) fileNameParts.push(safe(fio));
-  if (acc) fileNameParts.push(safe(acc));
-  if (asOf) fileNameParts.push(safe(asOf));
-
-  if (full) fileNameParts.push(...period);
-  XLSX.writeFile(wb, fileNameParts.join(' - ') + '.xlsx');
+  XLSX.writeFile(wb, fileName);
 }
 
 
