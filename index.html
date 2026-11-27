@@ -828,6 +828,23 @@
     #table-container table.data-table td.movement-number { text-align: right; }
     #table-container table.data-table td:is(.movement-date, .movement-short) { text-align: center; }
 
+    /* Compact desktop view keeps the instrument index alongside the full history. */
+    @media (min-width: 1025px) {
+      .instrument-detail-layout .nav-panel { width: clamp(132px, 8.5vw, 160px); }
+      .instrument-detail-layout .nav-item { padding: 4px 5px; font-size: 10px; line-height: 1.35; }
+      .instrument-detail-layout .nav-header,
+      .instrument-detail-layout .nav-stats { padding: 6px; }
+      #table-container { padding: 6px; }
+      #table-container table.data-table { font-size: clamp(10px, .6vw, 11.5px); }
+      #table-container table.data-table :is(th, td) { padding: 6px 3px; line-height: 1.3; }
+      #table-container table.data-table th { font-size: clamp(10px, .56vw, 11px); }
+      #table-container table.data-table :is(.movement-name, .movement-operation) { min-width: 12ch; }
+      #table-container table.data-table .movement-description { min-width: 9ch; }
+      #table-container table.data-table .movement-identifier { min-width: 12ch; }
+      #table-container table.data-table .fifo-average-col { min-width: 10ch; }
+      #table-container table.data-table :is(th, td):nth-child(3) { min-width: 0; }
+    }
+
     :root[data-theme="dark"] { color-scheme: dark; --tone-2563eb: #689aff;
       --tone-1d4ed8: #6d94ff;
       --tone-eff6ff: #21272e;
