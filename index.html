@@ -788,37 +788,36 @@
 }
 
 
-    #table-container .table-wrapper { min-width: 0; max-width: 100%; }
-    #table-container table.data-table { width: 100%; table-layout: fixed; }
+    #table-container .table-wrapper { min-width: 0; max-width: 100%; overflow-x: auto; }
+    #table-container table.data-table {
+      width: 100%;
+      table-layout: auto;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
     #table-container table.data-table :is(th, td) {
-      min-width: 0;
-      padding-inline: clamp(1px, .18vw, 4px);
+      padding: 9px 6px;
+      line-height: 1.45;
       white-space: normal;
       overflow-wrap: anywhere;
+      vertical-align: middle;
     }
-    #table-container table.data-table th:first-child { width: 2.4%; }
-    #table-container table.data-table th.movement-identifier { width: 6%; }
-    #table-container table.data-table th.fifo-average-col { width: 6%; }
-    #table-container table.data-table { font-size: clamp(10px, .62vw, 11px); line-height: 1.3; }
-    #table-container table.data-table th { font-size: 10px; line-height: 1.2; padding-block: 5px; }
-    #table-container table.data-table th:first-child { width: 5ch; }
-    #table-container table.data-table tbody td:first-child {
-      white-space: nowrap;
-      overflow-wrap: normal;
-      font-variant-numeric: tabular-nums;
+    #table-container table.data-table th {
+      font-size: 11.5px;
+      line-height: 1.35;
       text-align: center;
     }
-    #table-container table.data-table th.movement-short { width: 3%; }
-    #table-container table.data-table th.movement-date { width: calc(10ch + 12px); }
-    #table-container table.data-table th.movement-price { width: 6.6%; }
-    #table-container table.data-table td { padding-block: 4px; }
-    #table-container table.data-table td:is(.movement-date,.movement-number,.movement-identifier) {
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums;
+    #table-container table.data-table .movement-description { min-width: 10ch; }
+    #table-container table.data-table :is(.movement-name, .movement-operation) { min-width: 17ch; }
+    #table-container table.data-table .movement-identifier { min-width: 13ch; }
+    #table-container table.data-table :is(.movement-short, th:first-child) { min-width: 4ch; }
+    #table-container table.data-table td:is(.movement-date, .movement-number) {
+      white-space: nowrap;
+      overflow-wrap: normal;
     }
     #table-container table.data-table td.movement-number { text-align: right; }
-    #table-container table.data-table td:is(.movement-date,.movement-short) { text-align: center; }
-    #table-container table.data-table td[contenteditable="true"] { white-space: normal; overflow-wrap: anywhere; }
-  
+    #table-container table.data-table td:is(.movement-date, .movement-short) { text-align: center; }
+
     :root[data-theme="dark"] { color-scheme: dark; --tone-2563eb: #689aff;
       --tone-1d4ed8: #6d94ff;
       --tone-eff6ff: #21272e;
