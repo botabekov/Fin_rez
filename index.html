@@ -4058,7 +4058,6 @@ function attachLongPressEdit(table){
           const salesTotalsByCcy = {};
           let counter = 1;
           
-          let grandTotalKzt = 0; // Итоговая сумма в тенге
 
           rows.forEach(row => {
             if (colSaleAmountIndex == null || colSaleAmountIndex < 0) return;
@@ -4092,20 +4091,16 @@ function attachLongPressEdit(table){
             const country = colCountryIndex   != null ? row[colCountryIndex]   : '';
             const cost    = colCostIndex      != null ? row[colCostIndex]      : '';
             const profit  = colProfitIndex    != null ? row[colProfitIndex]    : '';
-            const profitKzt = colProfitKztIndex != null ? row[colProfitKztIndex] : '';
 
             salesRows.push([
               counter++, dateStr || '', name || '', qty || '', price || '', ccy || '',
               dir || '', market || '', type || '', isin || '', country || '',
-              cost || '', row[colSaleAmountIndex] || '', profit || '', profitKzt || ''
+              cost || '', row[colSaleAmountIndex] || '', profit || ''
             ]);
 
             const profitNum = parseNumber(profit);
             addToTotals(salesTotalsByCcy, String(ccy || '').trim(), profitNum);
 
-            // Суммируем KZT эквивалент из колонки (если заполнено)
-            const kztVal = parseNumber(profitKzt);
-            if (!isNaN(kztVal)) grandTotalKzt += kztVal;
           });
 
           // Дивиденды
@@ -4152,7 +4147,7 @@ function attachLongPressEdit(table){
                 dIdxQty >= 0 ? row[dIdxQty] : '', ccy || '', dIdxOpType >= 0 ? row[dIdxOpType] : '',
                 dIdxMarket >= 0 ? row[dIdxMarket] : '', dIdxAssetType >= 0 ? row[dIdxAssetType] : '',
                 dIdxIsin >= 0 ? row[dIdxIsin] : '', dIdxCountry >= 0 ? row[dIdxCountry] : '',
-                dIdxAmount >= 0 ? row[dIdxAmount] : '', '' 
+                dIdxAmount >= 0 ? row[dIdxAmount] : ''
               ]);
               addToTotals(dividendsTotalsByCcy, String(ccy || '').trim(), amountNum);
             }
@@ -4205,57 +4200,29 @@ function attachLongPressEdit(table){
               repoRows.push([
                 repoCounter++, rIdxDate >= 0 ? row[rIdxDate] : '', rIdxName >= 0 ? row[rIdxName] : '',
                 rIdxQty >= 0 ? row[rIdxQty] : '', ccy || '', rIdxMarket >= 0 ? row[rIdxMarket] : '',
-                rIdxOpen >= 0 ? openRaw : '', rIdxClose >= 0 ? closeRaw : '', reward, ''
+                rIdxOpen >= 0 ? openRaw : '', rIdxClose >= 0 ? closeRaw : '', reward
               ]);
               addToTotals(repoTotalsByCcy, String(ccy || '').trim(), rewardNum);
             }
           }
 
-          // Остатки ЦБ (CB Data) - ФИЛЬТРАЦИЯ ПУСТЫХ СТОЛБЦОВ
           let extendedCbHeader = [];
           let extendedCbRows = [];
-          
-          if (cbData && cbData.length > 0) {
-            // 1. Формируем "сырую" таблицу с добавленными расчетными столбцами 
-            // !!! ВАЖНО: Заполняем "API / HS" сразу, чтобы фильтр не удалил их
-            let rawHeader = [...cbData[0], "Стоимость приобретения", "Стоимость бумаги на конец отчетного периода", "Разница"];
-            let rawRows = [];
-            if (cbData.length > 1) {
-                // Заполняем строки плейсхолдерами
-                rawRows = cbData.slice(1).map(row => [...row, "API / HS", "API / HS", "API / HS"]);
+
+          if (cbData?.length) {
+            const [sourceHeader, ...sourceRows] = cbData;
+            const sourceColumns = sourceHeader.flatMap((header, index) => {
+              const title = normalizeKey(header);
+              const isMarketValuation = /^(СТОИМОСТЬ БУМАГИ НА КОНЕЦ ОТЧ[ЕЁ]ТНОГО ПЕРИОДА|РАЗНИЦА)$/.test(title);
+              const hasData = title || sourceRows.some(row => String(row[index] ?? '').trim() !== '');
+              return !isMarketValuation && hasData ? [index] : [];
+            });
+            extendedCbHeader = sourceColumns.map(index => sourceHeader[index]);
+            extendedCbRows = sourceRows.map(row => sourceColumns.map(index => row[index]));
+            if (extendedCbRows.length && !extendedCbHeader.some(header => normalizeKey(header) === 'СТОИМОСТЬ ПРИОБРЕТЕНИЯ')) {
+              extendedCbHeader.push('Стоимость приобретения');
+              extendedCbRows.forEach(row => row.push('API / HS'));
             }
-
-            // 2. Определяем индексы валидных столбцов (не пустых)
-            const validColIndices = [];
-            
-            for (let c = 0; c < rawHeader.length; c++) {
-                const hName = String(rawHeader[c] || '').trim();
-                
-                // Проверяем, есть ли хоть какие-то данные в этом столбце
-                let hasData = false;
-                for (let r = 0; r < rawRows.length; r++) {
-                    const cellVal = rawRows[r][c];
-                    if (cellVal !== undefined && cellVal !== null && String(cellVal).trim() !== '') {
-                        hasData = true;
-                        break;
-                    }
-                }
-
-                // Логика фильтрации:
-                const isCalculated = ["Стоимость приобретения", "Стоимость бумаги на конец отчетного периода", "Разница"].includes(hName);
-                
-                if (hasData) {
-                    validColIndices.push(c);
-                } else {
-                    if (hName !== '' && !isCalculated) {
-                         validColIndices.push(c);
-                    }
-                }
-            }
-
-            // 3. Пересобираем заголовок и строки по валидным индексам
-            extendedCbHeader = validColIndices.map(i => rawHeader[i]);
-            extendedCbRows = rawRows.map(r => validColIndices.map(i => r[i]));
           }
 
           // 2. ФОРМИРОВАНИЕ СВОДНОЙ ТАБЛИЦЫ
@@ -4282,114 +4249,30 @@ function attachLongPressEdit(table){
             return ia - ib;
           });
 
-          // --- ОБНОВЛЕННЫЙ БЛОК С ЗАГЛУШКАМИ API / HS ---
-          let summaryHtml = `
+          const summaryHeaders = ['Категория дохода', 'Валюта', 'Сумма в валюте'];
+          const summaryRows = summaryCategories.flatMap(category =>
+            allCurrencies
+              .filter(currency => category.totals[currency] !== undefined && category.totals[currency] !== 0)
+              .map(currency => [
+                category.id + '. ' + category.title,
+                currency,
+                category.totals[currency]
+              ])
+          );
+          const summaryHtml = `
             <div class="summary-block">
               <div class="summary-title">Сводная таблица финансовых результатов</div>
               <table class="summary-table">
-                <thead>
+                <thead><tr>${summaryHeaders.map(header => '<th>' + escapeHtml(header) + '</th>').join('')}</tr></thead>
+                <tbody>${summaryRows.length ? summaryRows.map(([category, currency, amount]) => `
                   <tr>
-                    <th>Категория дохода</th>
-                    <th>Валюта</th>
-                    <th>Сумма в валюте</th>
-                    <th>Эквивалент в тенге</th>
-                  </tr>
-                </thead>
-                <tbody>
-          `;
-
-          let finalGrandTotalKzt = 0; 
-
-          summaryCategories.forEach(cat => {
-              const categoryCurrencies = allCurrencies.filter(ccy => cat.totals[ccy] !== undefined && cat.totals[ccy] !== 0);
-              
-              if (categoryCurrencies.length > 0) {
-                  let categorySubtotalKzt = 0; 
-
-                  categoryCurrencies.forEach((ccy, idx) => {
-                      const amount = cat.totals[ccy];
-                      let currentKztValue = 0;
-                      let kztDisplay = '';
-
-                      if (ccy === 'KZT') {
-                          currentKztValue = amount;
-                          kztDisplay = formatMoney(amount);
-                      } else {
-                          // ЛОГИКА ЗАГЛУШЕК API / HS
-                          if (cat.id === '1') {
-                              // Сбор данных из колонки ручного ввода
-                              rows.forEach(r => {
-                                  if (String(r[colCurrencyIndex]).trim() === ccy) {
-                                      const val = parseNumber(r[colProfitKztIndex]);
-                                      if (!isNaN(val)) currentKztValue += val;
-                                  }
-                              });
-                          }
-                          
-                          // Если значение 0 или пусто — пишем API / HS
-                          if (currentKztValue !== 0) {
-                              kztDisplay = formatMoney(currentKztValue);
-                          } else {
-                              kztDisplay = '<span style="color: #CCCCCC; font-size: 10px; font-weight: normal;">API / HS</span>';
-                          }
-                      }
-
-                      categorySubtotalKzt += currentKztValue;
-
-                      summaryHtml += `<tr>`;
-                      if (idx === 0) {
-                          summaryHtml += `<td rowspan="${categoryCurrencies.length + 1}" style="vertical-align:top; font-weight:600; text-align:left;">${cat.id}. ${escapeHtml(cat.title)}</td>`;
-                      }
-                      summaryHtml += `<td>${ccy}</td>`;
-                      summaryHtml += `<td>${formatMoney(amount)}</td>`;
-                      summaryHtml += `<td>${kztDisplay}</td>`;
-                      summaryHtml += `</tr>`;
-                  });
-
-                  // Итого по категории
-                  summaryHtml += `
-                    <tr class="subtotal-row">
-                        <td colspan="2" style="text-align:right; font-weight:600;">Итого по категории</td>
-                        <td style="font-weight:600; background:#f8fafc; text-align:center;">${categorySubtotalKzt !== 0 ? formatMoney(categorySubtotalKzt) : '<span style="color: #CCCCCC; font-weight: normal;">API / HS</span>'}</td> 
-                    </tr>
-                  `;
-                  
-                  finalGrandTotalKzt += categorySubtotalKzt;
-              }
-          });
-
-          // ОБЩИЙ ИТОГ
-          summaryHtml += `
-              <tr class="grand-total-row">
-                <td colspan="3" style="text-align:right; font-weight:bold;">ИТОГО ОБЩИЙ ФИНАНСОВЫЙ РЕЗУЛЬТАТ (эквивалент в тенге)</td>
-                <td style="font-weight:bold; text-align:center; background:#e2e8f0;">${finalGrandTotalKzt !== 0 ? formatMoney(finalGrandTotalKzt) : '<span style="color: #999;">API / HS</span>'}</td>
-              </tr>
-          `;
-
-          summaryHtml += `</tbody></table></div>`;
-
-          // 3. ПОДГОТОВКА ДАННЫХ ДЛЯ ЭКСПОРТА (ОБНОВЛЕННАЯ СТРУКТУРА)
-          const exportSummaryData = [];
-          exportSummaryData.push(['Категория дохода', 'Валюта', 'Сумма в валюте', 'Эквивалент в тенге']);
-          
-          summaryCategories.forEach(cat => {
-             const categoryCurrencies = allCurrencies.filter(ccy => cat.totals[ccy] !== undefined && cat.totals[ccy] !== 0);
-             if (categoryCurrencies.length > 0) {
-                 categoryCurrencies.forEach((ccy, idx) => {
-                     const amount = cat.totals[ccy];
-                     const row = [
-                         idx === 0 ? `${cat.id}. ${cat.title}` : '',
-                         ccy,
-                         amount, 
-                         ccy === 'KZT' ? amount : null
-                     ];
-                     exportSummaryData.push(row);
-                 });
-                 exportSummaryData.push(['', '', 'Итого по категории', '']);
-             }
-          });
-          exportSummaryData.push(['ИТОГО ОБЩИЙ ФИНАНСОВЫЙ РЕЗУЛЬТАТ (эквивалент в тенге)', '', '', grandTotalKzt || '']);
-
+                    <td style="text-align:left;font-weight:600">${escapeHtml(category)}</td>
+                    <td>${escapeHtml(currency)}</td>
+                    <td>${formatMoney(amount)}</td>
+                  </tr>`).join('') : '<tr><td colspan="3">Данные отсутствуют.</td></tr>'}</tbody>
+              </table>
+            </div>`;
+          const exportSummaryData = [summaryHeaders, ...summaryRows];
 
           // 4. СБОРКА HTML ОТЧЕТА
           
@@ -4397,18 +4280,15 @@ function attachLongPressEdit(table){
           const headersSales = [
             '№','Дата транзакции','Наименование','Количество','Цена','Код валюты',
             'Тип операции','Наименование рынка','Тип актива','ISIN','Код страны регистрации эмитента',
-            'Стоимость приобретения','Стоимость реализации','Прибыль / Убыток',
-            'Прибыль / Убыток эквивалент в тенге'
+            'Стоимость приобретения','Стоимость реализации','Прибыль / Убыток'
           ];
           const headersDividends = [
             '№','Дата транзакции','Наименование','Количество','Код валюты','Тип операции',
-            'Наименование рынка','Тип актива','ISIN','Код страны регистрации эмитента','Сумма',
-            'Сумма эквивалент в тенге'
+            'Наименование рынка','Тип актива','ISIN','Код страны регистрации эмитента','Сумма'
           ];
           const headersRepo = [
             '№','Дата транзакции','Наименование','Количество','Код валюты','Наименование рынка',
-            'Объём открытия','Объём закрытия','Вознаграждение',
-            'Вознаграждение эквивалент в тенге'
+            'Объём открытия','Объём закрытия','Вознаграждение'
           ];
 
           // Секция Остатков (HTML)
@@ -4422,17 +4302,9 @@ function attachLongPressEdit(table){
             } else {
               extendedCbRows.forEach(r => {
                 cbSectionHtml += '<tr>';
-                extendedCbHeader.forEach((hName, colIdx) => {
-                  const val = r[colIdx] != null ? r[colIdx] : '';
-                  // Check if this is one of our special placeholder columns
-                  const isPlaceholderCol = ["Стоимость приобретения", "Стоимость бумаги на конец отчетного периода", "Разница"].includes(hName);
-                  
-                  if (isPlaceholderCol) {
-                        // Apply gray styling for API / HS text
-                        cbSectionHtml += `<td style="color: #CCCCCC;">API / HS</td>`;
-                  } else {
-                        cbSectionHtml += `<td>${escapeHtml(val)}</td>`;
-                  }
+                r.forEach(val => {
+                  const style = val === 'API / HS' ? ' style="color: #CCCCCC;"' : '';
+                  cbSectionHtml += `<td${style}>${escapeHtml(val)}</td>`;
                 });
                 cbSectionHtml += '</tr>';
               });
@@ -4442,7 +4314,7 @@ function attachLongPressEdit(table){
 
           // JSON для передачи в новое окно (для Excel функции)
           const reportPayload = {
-              exportSummaryData, // Новая структура сводной для Excel
+              exportSummaryData,
               headersSales, salesRows,
               headersDividends, dividendsRows,
               headersRepo, repoRows,
@@ -4536,8 +4408,6 @@ function attachLongPressEdit(table){
         border: 1px solid #94a3b8; padding: 6px 8px; text-align: center; 
     }
     .summary-table th { background: #f8fafc; font-weight: bold; }
-    .summary-table .subtotal-row td { background-color: #f1f5f9; border-top: 2px solid #94a3b8; font-weight: bold; }
-    .summary-table .grand-total-row td { background-color: #e2e8f0; font-size: 13px; border-top: 2px solid #000; }
 
     .detail-header {
       margin-top: 25px; margin-bottom: 10px; padding: 8px; font-size: 15px; font-weight: 700;
@@ -4641,7 +4511,7 @@ function attachLongPressEdit(table){
 
       if (R.exportSummaryData && R.exportSummaryData.length) {
          const wsSummary = XLSX.utils.aoa_to_sheet(R.exportSummaryData);
-         wsSummary['!cols'] = [{wch: 40}, {wch: 10}, {wch: 20}, {wch: 25}];
+         wsSummary['!cols'] = [{wch: 48}, {wch: 10}, {wch: 20}];
          XLSX.utils.book_append_sheet(wb, wsSummary, 'Сводка');
       }
       if (R.cbHeaderRow && R.cbHeaderRow.length) {
