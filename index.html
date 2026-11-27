@@ -3105,12 +3105,12 @@ window.addEventListener('keydown', (e) => {
                 const caption = document.createElement('th');
                 caption.scope = 'row';
                 caption.colSpan = beforeProfit;
-                caption.textContent = currency ? 'Итого · ' + currency : 'Итого · валюта не указана';
+                caption.textContent = 'Итого · ' + currency;
                 line.appendChild(caption);
                 const amount = document.createElement('td');
                 amount.classList.add('movement-number');
-                amount.textContent = currency ? formatNumberComma(cents / 100) : '—';
-                if (currency) amount.classList.add(profitTone(cents));
+                amount.textContent = formatNumberComma(cents / 100);
+                amount.classList.add(profitTone(cents));
                 line.appendChild(amount);
                 if (afterProfit > 0) {
                   const rest = document.createElement('td');
@@ -3307,7 +3307,7 @@ window.addEventListener('keydown', (e) => {
               if (colIndex === profitColIndex && profitForRow !== '') {
                 const cents = Math.round(parseNumber(profitForRow) * 100);
                 const currency = String(row[colCurrencyIndex] ?? '').trim().toUpperCase();
-                profitTotals.set(currency, (profitTotals.get(currency) || 0) + cents);
+                if (currency) profitTotals.set(currency, (profitTotals.get(currency) || 0) + cents);
                 td.classList.add(profitTone(cents));
               }
               if (/^\d{2}\.\d{2}\.\d{4}$/.test(String(cell).trim())) td.classList.add('movement-date');
