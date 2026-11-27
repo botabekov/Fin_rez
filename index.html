@@ -835,6 +835,29 @@
     :root[data-theme="dark"] #table-container td.movement-loss { background: #54292d; color: #ffc6c9; }
     :root[data-theme="dark"] #table-container td.movement-gain { background: #194033; color: #baf2d1; }
 
+    /* Share the column tracks across all instrument tables. */
+    @supports (grid-template-columns: subgrid) {
+      #tables-wrapper {
+        display: grid;
+        grid-template-columns: repeat(var(--movement-columns, 1), auto);
+        min-width: min-content;
+      }
+      #tables-wrapper > .table-wrapper,
+      #tables-wrapper table.data-table,
+      #tables-wrapper :is(thead, tbody, tfoot, tr) {
+        display: grid;
+        grid-template-columns: subgrid;
+        grid-column: 1 / -1;
+      }
+      #tables-wrapper .table-wrapper > :not(table) { grid-column: 1 / -1; }
+      #table-container #tables-wrapper table.data-table :is(th, td) {
+        width: auto;
+        align-content: center;
+        border-width: 0 1px 1px 0;
+      }
+      #tables-wrapper tfoot td:last-child:not(:nth-child(2)) { grid-column: auto / -1; }
+    }
+
     /* Compact desktop view keeps the instrument index alongside the full history. */
     @media (min-width: 1025px) {
       .instrument-detail-layout .nav-panel { width: clamp(132px, 8.5vw, 160px); }
@@ -3015,6 +3038,8 @@ window.addEventListener('keydown', (e) => {
 
           const header = data[0];
           const rows   = data.slice(1);
+          const visibleColumns = header.filter((_, index) => index !== profitKztColIndex);
+          tablesWrapper.style.setProperty('--movement-columns', String(visibleColumns.length));
 
           const isinTickers = {};
           if (isinColIndex != null && isinColIndex >= 0 &&
@@ -3105,6 +3130,7 @@ window.addEventListener('keydown', (e) => {
                 const caption = document.createElement('th');
                 caption.scope = 'row';
                 caption.colSpan = beforeProfit;
+                caption.style.gridColumn = `span ${beforeProfit}`;
                 caption.textContent = 'Итого · ' + currency;
                 line.appendChild(caption);
                 const amount = document.createElement('td');
