@@ -826,7 +826,9 @@
       padding: 9px 6px;
       line-height: 1.45;
       white-space: normal;
-      overflow-wrap: anywhere;
+      overflow-wrap: normal;
+      word-break: normal;
+      hyphens: manual;
       vertical-align: middle;
     }
     #table-container table.data-table th {
@@ -838,7 +840,7 @@
     #table-container table.data-table :is(.movement-name, .movement-operation) { min-width: 17ch; }
     #table-container table.data-table .movement-identifier { min-width: 13ch; }
     #table-container table.data-table :is(.movement-short, th:first-child) { min-width: 4ch; }
-    #table-container table.data-table td:is(.movement-date, .movement-number) {
+    #table-container table.data-table td:is(.movement-date, .movement-number, .movement-identifier) {
       white-space: nowrap;
       overflow-wrap: normal;
     }
